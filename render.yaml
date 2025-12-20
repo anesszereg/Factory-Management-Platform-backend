@@ -4,12 +4,11 @@ services:
     env: node
     region: oregon
     plan: free
-    buildCommand: npm install && npm run build && ls -la dist/
+    buildCommand: npm ci && npm run build
     startCommand: node dist/server.js
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 8000
       - key: DATABASE_URL
         sync: false

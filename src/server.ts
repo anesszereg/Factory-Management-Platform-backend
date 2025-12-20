@@ -14,12 +14,29 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 app.use(cors());
 app.use(express.json());
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    environment: NODE_ENV,
+    uptime: process.uptime()
+  });
+});
+
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Factory Management Platform API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      api: '/api/*'
+    }
+  });
 });
 
 app.use('/api/furniture-models', furnitureModelsRouter);
@@ -31,12 +48,41 @@ app.use('/api/material-consumption', materialConsumptionRouter);
 app.use('/api/daily-expenses', dailyExpensesRouter);
 app.use('/api/dashboard', dashboardRouter);
 
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!', message: err.message });
+app.use((req, res) => {
+  res.status(404).json({ 
+    error: 'Not Found',
+    message: `Cannot ${req.method} ${req.path}`,
+    availableEndpoints: '/api/*'
+  });
 });
 
-app.listen(PORT, () => {
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Error:', err.stack);
+  res.status(err.status || 500).json({ 
+    error: 'Internal Server Error',
+    message: NODE_ENV === 'production' ? 'Something went wrong' : err.message 
+  });
+});
+
+const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📊 Environment: ${NODE_ENV}`);
+  console.log(`🌐 Health check: http://localhost:${PORT}/health`);
+  console.log(`📡 API endpoints: http://localhost:${PORT}/api/*`);
+});
+
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
 });
