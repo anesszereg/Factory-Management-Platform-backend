@@ -4,8 +4,8 @@ services:
     env: node
     region: oregon
     plan: free
-    buildCommand: npm ci && npm run build
-    startCommand: node dist/server.ts
+    buildCommand: npm ci && npm run build && pwd && ls -la && ls -la dist/
+    startCommand: cd /opt/render/project/src && node dist/server.js
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
