@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+type FurnitureSize = 'SIZE_45CM' | 'SIZE_60CM' | 'SIZE_80CM' | 'SIZE_100CM' | 'SIZE_120CM';
+
 export const furnitureModelService = {
   async getAll() {
     return await prisma.furnitureModel.findMany({
@@ -26,13 +28,13 @@ export const furnitureModelService = {
     });
   },
 
-  async create(data: { name: string; description?: string }) {
+  async create(data: { name: string; description?: string; size: FurnitureSize }) {
     return await prisma.furnitureModel.create({
       data
     });
   },
 
-  async update(id: number, data: { name?: string; description?: string }) {
+  async update(id: number, data: { name?: string; description?: string; size?: FurnitureSize }) {
     return await prisma.furnitureModel.update({
       where: { id },
       data
