@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model FurnitureModel {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  productionOrders ProductionOrder[]
+
+  @@map("furniture_models")
+}
+
+enum ProductionStatus {
+  IN_PROGRESS
+  FINISHED
+}
+
+model ProductionOrder {
+  id              Int              @id @default(autoincrement())
+  modelId         Int              @map("model_id")
+  quantity        Int
+  startDate       DateTime         @map("start_date")
+  status          ProductionStatus @default(IN_PROGRESS)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  model               FurnitureModel        @relation(fields: [modelId], references: [id])
+  dailyProduction     DailyProduction[]
+  materialConsumption MaterialConsumption[]
+
+  @@map("production_orders")
+}
+
+enum ProductionStep {
+  CUTTING
+  MONTAGE
+  FINITION
+  PAINT
+  PACKAGING
+}
+
+model DailyProduction {
+  id                 Int            @id @default(autoincrement())
+  orderId            Int            @map("order_id")
+  step               ProductionStep
+  date               DateTime       @db.Date
+  quantityEntered    Int            @map("quantity_entered")
+  quantityCompleted  Int            @map("quantity_completed")
+  quantityLost       Int            @default(0) @map("quantity_lost")
+  notes              String?
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  order ProductionOrder @relation(fields: [orderId], references: [id])
+
+  @@unique([orderId, step, date])
+  @@map("daily_production")
+}
+
+enum MaterialUnit {
+  KG
+  LITER
+  PIECE
+}
+
+model RawMaterial {
+  id              Int          @id @default(autoincrement())
+  name            String       @unique
+  unit            MaterialUnit
+  currentStock    Float        @default(0) @map("current_stock")
+  minStockAlert   Float        @default(0) @map("min_stock_alert")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  purchases   MaterialPurchase[]
+  consumption MaterialConsumption[]
+
+  @@map("raw_materials")
+}
+
+model MaterialPurchase {
+  id         Int      @id @default(autoincrement())
+  materialId Int      @map("material_id")
+  date       DateTime @db.Date
+  supplier   String
+  quantity   Float
+  unitPrice  Float    @map("unit_price")
+  totalPrice Float    @map("total_price")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  material RawMaterial @relation(fields: [materialId], references: [id])
+
+  @@map("material_purchases")
+}
+
+model MaterialConsumption {
+  id         Int             @id @default(autoincrement())
+  materialId Int             @map("material_id")
+  date       DateTime        @db.Date
+  quantity   Float
+  orderId    Int?            @map("order_id")
+  step       ProductionStep?
+  notes      String?
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+
+  material RawMaterial      @relation(fields: [materialId], references: [id])
+  order    ProductionOrder? @relation(fields: [orderId], references: [id])
+
+  @@map("material_consumption")
+}
+
+enum ExpenseCategory {
+  ELECTRICITY
+  WATER
+  TRANSPORT
+  SALARIES
+  MAINTENANCE
+  OTHER
+}
+
+model DailyExpense {
+  id            Int             @id @default(autoincrement())
+  date          DateTime        @db.Date
+  category      ExpenseCategory
+  amount        Float
+  paymentMethod String?         @map("payment_method")
+  description   String?
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@map("daily_expenses")
+}
