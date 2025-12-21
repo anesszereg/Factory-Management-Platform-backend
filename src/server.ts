@@ -8,6 +8,7 @@ import rawMaterialsRouter from './routes/rawMaterials';
 import materialPurchasesRouter from './routes/materialPurchases';
 import materialConsumptionRouter from './routes/materialConsumption';
 import dailyExpensesRouter from './routes/dailyExpenses';
+import incomesRouter from './routes/incomes';
 import dashboardRouter from './routes/dashboard';
 
 dotenv.config();
@@ -57,6 +58,7 @@ app.use('/api/raw-materials', rawMaterialsRouter);
 app.use('/api/material-purchases', materialPurchasesRouter);
 app.use('/api/material-consumption', materialConsumptionRouter);
 app.use('/api/daily-expenses', dailyExpensesRouter);
+app.use('/api/incomes', incomesRouter);
 app.use('/api/dashboard', dashboardRouter);
 
 app.use((req, res) => {

@@ -150,3 +150,25 @@ model DailyExpense {
 
   @@map("daily_expenses")
 }
+
+enum IncomeSource {
+  PRODUCT_SALES
+  SERVICE_REVENUE
+  CUSTOM_ORDERS
+  REPAIRS
+  CONSULTING
+  OTHER
+}
+
+model Income {
+  id            Int          @id @default(autoincrement())
+  date          DateTime     @db.Date
+  source        IncomeSource
+  amount        Float
+  paymentMethod String?      @map("payment_method")
+  description   String?
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@map("incomes")
+}
