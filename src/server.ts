@@ -10,6 +10,8 @@ import materialConsumptionRouter from './routes/materialConsumption';
 import dailyExpensesRouter from './routes/dailyExpenses';
 import incomesRouter from './routes/incomes';
 import dashboardRouter from './routes/dashboard';
+import employeesRouter from './routes/employees';
+import salaryAllowancesRouter from './routes/salaryAllowances';
 
 dotenv.config();
 
@@ -60,6 +62,8 @@ app.use('/api/material-consumption', materialConsumptionRouter);
 app.use('/api/daily-expenses', dailyExpensesRouter);
 app.use('/api/incomes', incomesRouter);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api/employees', employeesRouter);
+app.use('/api/salary-allowances', salaryAllowancesRouter);
 
 app.use((req, res) => {
   res.status(404).json({ 
