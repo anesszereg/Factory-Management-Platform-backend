@@ -86,19 +86,36 @@ export const salaryAllowanceService = {
       );
     }
 
-    return await prisma.salaryAllowance.create({
-      data,
-      include: {
-        employee: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            monthlySalary: true
+    const result = await prisma.$transaction(async (tx) => {
+      const allowance = await tx.salaryAllowance.create({
+        data,
+        include: {
+          employee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              monthlySalary: true
+            }
           }
         }
-      }
+      });
+
+      await tx.dailyExpense.create({
+        data: {
+          date: data.date,
+          category: 'SALARIES',
+          amount: data.amount,
+          description: data.description 
+            ? `Salary allowance for ${employee.firstName} ${employee.lastName}: ${data.description}`
+            : `Salary allowance for ${employee.firstName} ${employee.lastName}`,
+        }
+      });
+
+      return allowance;
     });
+
+    return result;
   },
 
   async update(id: number, data: {
