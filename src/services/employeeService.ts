@@ -1,5 +1,6 @@
 import { PrismaClient, EmployeeStatus } from '@prisma/client';
 import { startOfMonth, endOfMonth } from 'date-fns';
+import { getEmployeeSalaryCycle } from '../utils/dateUtils';
 
 const prisma = new PrismaClient();
 
@@ -69,29 +70,29 @@ export const employeeService = {
 
   async getEmployeeSalaryInfo(id: number, month?: Date) {
     const targetMonth = month || new Date();
-    const startDate = startOfMonth(targetMonth);
-    const endDate = endOfMonth(targetMonth);
 
     const employee = await prisma.employee.findUnique({
-      where: { id },
-      include: {
-        salaryAllowances: {
-          where: {
-            date: {
-              gte: startDate,
-              lte: endDate
-            }
-          },
-          orderBy: { date: 'desc' }
-        }
-      }
+      where: { id }
     });
 
     if (!employee) {
       throw new Error('Employee not found');
     }
 
-    const totalAllowances = employee.salaryAllowances.reduce(
+    const salaryCycle = getEmployeeSalaryCycle(employee.hireDate, targetMonth);
+
+    const salaryAllowances = await prisma.salaryAllowance.findMany({
+      where: {
+        employeeId: id,
+        date: {
+          gte: salaryCycle.start,
+          lte: salaryCycle.end
+        }
+      },
+      orderBy: { date: 'desc' }
+    });
+
+    const totalAllowances = salaryAllowances.reduce(
       (sum, allowance) => sum + allowance.amount, 
       0
     );
@@ -105,39 +106,39 @@ export const employeeService = {
         lastName: employee.lastName,
         monthlySalary: employee.monthlySalary
       },
-      month: {
-        start: startDate,
-        end: endDate
+      salaryCycle: {
+        start: salaryCycle.start,
+        end: salaryCycle.end
       },
       totalAllowances,
       remainingSalary,
-      allowances: employee.salaryAllowances
+      allowances: salaryAllowances
     };
   },
 
   async getAllEmployeesSalarySummary(month?: Date) {
     const targetMonth = month || new Date();
-    const startDate = startOfMonth(targetMonth);
-    const endDate = endOfMonth(targetMonth);
 
     const employees = await prisma.employee.findMany({
       where: {
         status: 'ACTIVE'
-      },
-      include: {
-        salaryAllowances: {
-          where: {
-            date: {
-              gte: startDate,
-              lte: endDate
-            }
-          }
-        }
       }
     });
 
-    const summary = employees.map(employee => {
-      const totalAllowances = employee.salaryAllowances.reduce(
+    const summary = await Promise.all(employees.map(async (employee) => {
+      const salaryCycle = getEmployeeSalaryCycle(employee.hireDate, targetMonth);
+      
+      const salaryAllowances = await prisma.salaryAllowance.findMany({
+        where: {
+          employeeId: employee.id,
+          date: {
+            gte: salaryCycle.start,
+            lte: salaryCycle.end
+          }
+        }
+      });
+
+      const totalAllowances = salaryAllowances.reduce(
         (sum, allowance) => sum + allowance.amount,
         0
       );
@@ -150,9 +151,13 @@ export const employeeService = {
         monthlySalary: employee.monthlySalary,
         totalAllowances,
         remainingSalary,
-        allowanceCount: employee.salaryAllowances.length
+        allowanceCount: salaryAllowances.length,
+        salaryCycle: {
+          start: salaryCycle.start,
+          end: salaryCycle.end
+        }
       };
-    });
+    }));
 
     const totals = {
       totalMonthlySalaries: summary.reduce((sum, emp) => sum + emp.monthlySalary, 0),
@@ -161,10 +166,7 @@ export const employeeService = {
     };
 
     return {
-      month: {
-        start: startDate,
-        end: endDate
-      },
+      referenceDate: targetMonth,
       employees: summary,
       totals
     };
