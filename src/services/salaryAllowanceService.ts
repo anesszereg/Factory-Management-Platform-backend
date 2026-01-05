@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
+import { getEmployeeSalaryCycle } from '../utils/dateUtils';
 
 const prisma = new PrismaClient();
 
@@ -56,24 +57,26 @@ export const salaryAllowanceService = {
     description?: string;
   }) {
     const employee = await prisma.employee.findUnique({
-      where: { id: data.employeeId },
-      include: {
-        salaryAllowances: {
-          where: {
-            date: {
-              gte: startOfMonth(data.date),
-              lte: endOfMonth(data.date)
-            }
-          }
-        }
-      }
+      where: { id: data.employeeId }
     });
 
     if (!employee) {
       throw new Error('Employee not found');
     }
 
-    const totalAllowances = employee.salaryAllowances.reduce(
+    const salaryCycle = getEmployeeSalaryCycle(employee.hireDate, data.date);
+
+    const existingAllowances = await prisma.salaryAllowance.findMany({
+      where: {
+        employeeId: data.employeeId,
+        date: {
+          gte: salaryCycle.start,
+          lte: salaryCycle.end
+        }
+      }
+    });
+
+    const totalAllowances = existingAllowances.reduce(
       (sum, allowance) => sum + allowance.amount,
       0
     );
@@ -126,15 +129,7 @@ export const salaryAllowanceService = {
     const existingAllowance = await prisma.salaryAllowance.findUnique({
       where: { id },
       include: {
-        employee: {
-          include: {
-            salaryAllowances: {
-              where: {
-                id: { not: id }
-              }
-            }
-          }
-        }
+        employee: true
       }
     });
 
@@ -143,14 +138,16 @@ export const salaryAllowanceService = {
     }
 
     if (data.amount) {
-      const targetMonth = data.date || existingAllowance.date;
+      const targetDate = data.date || existingAllowance.date;
+      const salaryCycle = getEmployeeSalaryCycle(existingAllowance.employee.hireDate, targetDate);
+      
       const monthAllowances = await prisma.salaryAllowance.findMany({
         where: {
           employeeId: existingAllowance.employeeId,
           id: { not: id },
           date: {
-            gte: startOfMonth(targetMonth),
-            lte: endOfMonth(targetMonth)
+            gte: salaryCycle.start,
+            lte: salaryCycle.end
           }
         }
       });
