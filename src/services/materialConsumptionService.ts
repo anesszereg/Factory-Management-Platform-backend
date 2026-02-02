@@ -8,6 +8,8 @@ export const materialConsumptionService = {
   async getAll(filters?: { 
     materialId?: number; 
     orderId?: number;
+    employeeId?: number;
+    pieceWorkerId?: number;
     startDate?: Date;
     endDate?: Date;
   }) {
@@ -15,6 +17,8 @@ export const materialConsumptionService = {
       where: {
         ...(filters?.materialId && { materialId: filters.materialId }),
         ...(filters?.orderId && { orderId: filters.orderId }),
+        ...(filters?.employeeId && { employeeId: filters.employeeId }),
+        ...(filters?.pieceWorkerId && { pieceWorkerId: filters.pieceWorkerId }),
         ...(filters?.startDate && filters?.endDate && {
           date: {
             gte: startOfDay(filters.startDate),
@@ -28,7 +32,9 @@ export const materialConsumptionService = {
           include: {
             model: true
           }
-        }
+        },
+        employee: true,
+        pieceWorker: true
       },
       orderBy: { date: 'desc' }
     });
@@ -43,7 +49,9 @@ export const materialConsumptionService = {
           include: {
             model: true
           }
-        }
+        },
+        employee: true,
+        pieceWorker: true
       }
     });
   },
@@ -54,6 +62,8 @@ export const materialConsumptionService = {
     quantity: number;
     orderId?: number;
     step?: ProductionStep;
+    employeeId?: number;
+    pieceWorkerId?: number;
     notes?: string;
   }) {
     const consumption = await prisma.materialConsumption.create({
@@ -64,7 +74,9 @@ export const materialConsumptionService = {
           include: {
             model: true
           }
-        }
+        },
+        employee: true,
+        pieceWorker: true
       }
     });
 
@@ -75,6 +87,8 @@ export const materialConsumptionService = {
 
   async update(id: number, data: {
     quantity?: number;
+    employeeId?: number;
+    pieceWorkerId?: number;
     notes?: string;
   }) {
     const oldConsumption = await prisma.materialConsumption.findUnique({
@@ -103,7 +117,9 @@ export const materialConsumptionService = {
           include: {
             model: true
           }
-        }
+        },
+        employee: true,
+        pieceWorker: true
       }
     });
   },

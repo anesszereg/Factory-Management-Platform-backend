@@ -12,6 +12,8 @@ import incomesRouter from './routes/incomes';
 import dashboardRouter from './routes/dashboard';
 import employeesRouter from './routes/employees';
 import salaryAllowancesRouter from './routes/salaryAllowances';
+import pieceWorkersRouter from './routes/pieceWorkers';
+import dailyPieceReceiptsRouter from './routes/dailyPieceReceipts';
 
 dotenv.config();
 
@@ -64,6 +66,8 @@ app.use('/api/incomes', incomesRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/employees', employeesRouter);
 app.use('/api/salary-allowances', salaryAllowancesRouter);
+app.use('/api/piece-workers', pieceWorkersRouter);
+app.use('/api/daily-piece-receipts', dailyPieceReceiptsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ 

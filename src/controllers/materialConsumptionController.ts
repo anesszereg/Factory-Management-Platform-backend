@@ -5,10 +5,12 @@ import { ProductionStep } from '@prisma/client';
 export const materialConsumptionController = {
   async getAll(req: Request, res: Response) {
     try {
-      const { materialId, orderId, startDate, endDate } = req.query;
+      const { materialId, orderId, employeeId, pieceWorkerId, startDate, endDate } = req.query;
       const consumptions = await materialConsumptionService.getAll({
         materialId: materialId ? parseInt(materialId as string) : undefined,
         orderId: orderId ? parseInt(orderId as string) : undefined,
+        employeeId: employeeId ? parseInt(employeeId as string) : undefined,
+        pieceWorkerId: pieceWorkerId ? parseInt(pieceWorkerId as string) : undefined,
         startDate: startDate ? new Date(startDate as string) : undefined,
         endDate: endDate ? new Date(endDate as string) : undefined
       });
@@ -35,13 +37,15 @@ export const materialConsumptionController = {
 
   async create(req: Request, res: Response) {
     try {
-      const { materialId, date, quantity, orderId, step, notes } = req.body;
+      const { materialId, date, quantity, orderId, step, employeeId, pieceWorkerId, notes } = req.body;
       const consumption = await materialConsumptionService.create({
         materialId: parseInt(materialId),
         date: new Date(date),
         quantity: parseFloat(quantity),
         orderId: orderId ? parseInt(orderId) : undefined,
         step: step as ProductionStep,
+        employeeId: employeeId ? parseInt(employeeId) : undefined,
+        pieceWorkerId: pieceWorkerId ? parseInt(pieceWorkerId) : undefined,
         notes
       });
       res.status(201).json(consumption);
@@ -53,9 +57,11 @@ export const materialConsumptionController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { quantity, notes } = req.body;
+      const { quantity, employeeId, pieceWorkerId, notes } = req.body;
       const consumption = await materialConsumptionService.update(id, {
         quantity: quantity ? parseFloat(quantity) : undefined,
+        employeeId: employeeId ? parseInt(employeeId) : undefined,
+        pieceWorkerId: pieceWorkerId ? parseInt(pieceWorkerId) : undefined,
         notes
       });
       res.json(consumption);
