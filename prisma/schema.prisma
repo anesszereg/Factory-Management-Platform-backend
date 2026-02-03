@@ -90,8 +90,9 @@ model RawMaterial {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
-  purchases   MaterialPurchase[]
-  consumption MaterialConsumption[]
+  purchases          MaterialPurchase[]
+  consumption        MaterialConsumption[]
+  supplierOrderItems SupplierOrderItem[]
 
   @@map("raw_materials")
 }
@@ -151,6 +152,8 @@ model DailyExpense {
   description   String?
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  supplierPayments SupplierPayment[]
 
   @@map("daily_expenses")
 }
@@ -272,4 +275,83 @@ model ReceiptItem {
   receipt DailyPieceReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
 
   @@map("receipt_items")
+}
+
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Supplier {
+  id          Int            @id @default(autoincrement())
+  name        String         @unique
+  phone       String?
+  address     String?
+  notes       String?
+  status      SupplierStatus @default(ACTIVE)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  orders SupplierOrder[]
+
+  @@map("suppliers")
+}
+
+enum SupplierOrderStatus {
+  PENDING
+  PARTIAL
+  COMPLETED
+  CANCELLED
+}
+
+model SupplierOrder {
+  id            Int                 @id @default(autoincrement())
+  supplierId    Int                 @map("supplier_id")
+  orderDate     DateTime            @map("order_date") @db.Date
+  totalAmount   Float               @map("total_amount")
+  paidAmount    Float               @default(0) @map("paid_amount")
+  status        SupplierOrderStatus @default(PENDING)
+  notes         String?
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  supplier Supplier              @relation(fields: [supplierId], references: [id])
+  items    SupplierOrderItem[]
+  payments SupplierPayment[]
+
+  @@map("supplier_orders")
+}
+
+model SupplierOrderItem {
+  id          Int      @id @default(autoincrement())
+  orderId     Int      @map("order_id")
+  materialId  Int?     @map("material_id")
+  description String
+  quantity    Float
+  unitPrice   Float    @map("unit_price")
+  totalPrice  Float    @map("total_price")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  order    SupplierOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  material RawMaterial?  @relation(fields: [materialId], references: [id])
+
+  @@map("supplier_order_items")
+}
+
+model SupplierPayment {
+  id            Int      @id @default(autoincrement())
+  orderId       Int      @map("order_id")
+  expenseId     Int?     @map("expense_id")
+  date          DateTime @db.Date
+  amount        Float
+  paymentMethod String?  @map("payment_method")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  order   SupplierOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  expense DailyExpense? @relation(fields: [expenseId], references: [id])
+
+  @@map("supplier_payments")
 }
