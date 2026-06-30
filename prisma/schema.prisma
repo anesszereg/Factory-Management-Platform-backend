@@ -23,7 +23,8 @@ model FurnitureModel {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  productionOrders ProductionOrder[]
+  productionOrders     ProductionOrder[]
+  materialRequirements ModelMaterialRequirement[]
 
   @@map("furniture_models")
 }
@@ -93,22 +94,41 @@ model RawMaterial {
   purchases          MaterialPurchase[]
   consumption        MaterialConsumption[]
   supplierOrderItems SupplierOrderItem[]
+  modelRequirements  ModelMaterialRequirement[]
 
   @@map("raw_materials")
 }
 
-model MaterialPurchase {
-  id         Int      @id @default(autoincrement())
-  materialId Int      @map("material_id")
-  date       DateTime @db.Date
-  supplier   String
+model ModelMaterialRequirement {
+  id         Int            @id @default(autoincrement())
+  modelId    Int            @map("model_id")
+  step       ProductionStep
+  materialId Int            @map("material_id")
   quantity   Float
-  unitPrice  Float    @map("unit_price")
-  totalPrice Float    @map("total_price")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  model    FurnitureModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  material RawMaterial    @relation(fields: [materialId], references: [id])
+
+  @@unique([modelId, step, materialId])
+  @@map("model_material_requirements")
+}
+
+model MaterialPurchase {
+  id           Int       @id @default(autoincrement())
+  materialId   Int       @map("material_id")
+  supplierId   Int?      @map("supplier_id")
+  date         DateTime  @db.Date
+  supplierName String?   @map("supplier")
+  quantity     Float
+  unitPrice    Float     @map("unit_price")
+  totalPrice   Float     @map("total_price")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   material RawMaterial @relation(fields: [materialId], references: [id])
+  supplier Supplier?    @relation(fields: [supplierId], references: [id])
 
   @@map("material_purchases")
 }
@@ -154,6 +174,7 @@ model DailyExpense {
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
   supplierPayments SupplierPayment[]
+  dailyPieceReceipts DailyPieceReceipt[]
 
   @@map("daily_expenses")
 }
@@ -248,6 +269,7 @@ enum PaymentStatus {
 model DailyPieceReceipt {
   id              Int           @id @default(autoincrement())
   pieceWorkerId   Int           @map("piece_worker_id")
+  expenseId       Int?          @map("expense_id")
   date            DateTime      @db.Date
   totalAmount     Float         @map("total_amount")
   paidAmount      Float         @default(0) @map("paid_amount")
@@ -257,6 +279,7 @@ model DailyPieceReceipt {
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
   pieceWorker PieceWorker     @relation(fields: [pieceWorkerId], references: [id])
+  expense     DailyExpense? @relation(fields: [expenseId], references: [id])
   items       ReceiptItem[]
 
   @@map("daily_piece_receipts")
@@ -292,7 +315,8 @@ model Supplier {
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
-  orders SupplierOrder[]
+  orders    SupplierOrder[]
+  purchases MaterialPurchase[]
 
   @@map("suppliers")
 }

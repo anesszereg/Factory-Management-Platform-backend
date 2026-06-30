@@ -33,14 +33,15 @@ export const materialPurchaseController = {
 
   async create(req: Request, res: Response) {
     try {
-      const { materialId, date, supplier, quantity, unitPrice, totalPrice } = req.body;
+      const { materialId, date, supplierId, supplierName, quantity, unitPrice, totalPrice } = req.body;
       const purchase = await materialPurchaseService.create({
         materialId: parseInt(materialId),
         date: new Date(date),
-        supplier,
+        supplierId: supplierId ? parseInt(supplierId) : undefined,
+        supplierName,
         quantity: parseFloat(quantity),
         unitPrice: parseFloat(unitPrice),
-        totalPrice: parseFloat(totalPrice)
+        totalPrice: totalPrice ? parseFloat(totalPrice) : undefined
       });
       res.status(201).json(purchase);
     } catch (error: any) {
@@ -51,9 +52,10 @@ export const materialPurchaseController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { supplier, quantity, unitPrice, totalPrice } = req.body;
+      const { supplierId, supplierName, quantity, unitPrice, totalPrice } = req.body;
       const purchase = await materialPurchaseService.update(id, {
-        supplier,
+        supplierId: supplierId ? parseInt(supplierId) : undefined,
+        supplierName,
         quantity: quantity ? parseFloat(quantity) : undefined,
         unitPrice: unitPrice ? parseFloat(unitPrice) : undefined,
         totalPrice: totalPrice ? parseFloat(totalPrice) : undefined

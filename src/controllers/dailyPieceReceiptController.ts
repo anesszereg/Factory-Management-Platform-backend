@@ -35,7 +35,7 @@ export const dailyPieceReceiptController = {
 
   async create(req: Request, res: Response) {
     try {
-      const { pieceWorkerId, date, items, paidAmount, notes } = req.body;
+      const { pieceWorkerId, date, items, paidAmount, notes, createExpense } = req.body;
       
       // Parse items
       const parsedItems = items.map((item: any) => ({
@@ -50,6 +50,7 @@ export const dailyPieceReceiptController = {
         items: parsedItems,
         paidAmount: paidAmount ? parseFloat(paidAmount) : 0,
         notes,
+        createExpense: createExpense !== false,
       });
       res.status(201).json(receipt);
     } catch (error: any) {
@@ -60,7 +61,7 @@ export const dailyPieceReceiptController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { date, items, paidAmount, notes } = req.body;
+      const { date, items, paidAmount, notes, createExpense } = req.body;
       
       // Parse items if provided
       const parsedItems = items ? items.map((item: any) => ({
@@ -74,6 +75,7 @@ export const dailyPieceReceiptController = {
         items: parsedItems,
         paidAmount: paidAmount !== undefined ? parseFloat(paidAmount) : undefined,
         notes,
+        createExpense: createExpense !== undefined ? createExpense : undefined,
       });
       res.json(receipt);
     } catch (error: any) {
@@ -84,9 +86,13 @@ export const dailyPieceReceiptController = {
   async addPayment(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { amount } = req.body;
+      const { amount, createExpense } = req.body;
       
-      const receipt = await dailyPieceReceiptService.addPayment(id, parseFloat(amount));
+      const receipt = await dailyPieceReceiptService.addPayment(
+        id,
+        parseFloat(amount),
+        createExpense !== false
+      );
       res.json(receipt);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

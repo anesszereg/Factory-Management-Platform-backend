@@ -21,7 +21,8 @@ export const materialPurchaseService = {
         })
       },
       include: {
-        material: true
+        material: true,
+        supplier: true
       },
       orderBy: { date: 'desc' }
     });
@@ -31,7 +32,8 @@ export const materialPurchaseService = {
     return await prisma.materialPurchase.findUnique({
       where: { id },
       include: {
-        material: true
+        material: true,
+        supplier: true
       }
     });
   },
@@ -39,15 +41,27 @@ export const materialPurchaseService = {
   async create(data: {
     materialId: number;
     date: Date;
-    supplier: string;
+    supplierId?: number;
+    supplierName?: string;
     quantity: number;
     unitPrice: number;
-    totalPrice: number;
+    totalPrice?: number;
   }) {
+    const totalPrice = data.totalPrice ?? data.quantity * data.unitPrice;
+
     const purchase = await prisma.materialPurchase.create({
-      data,
+      data: {
+        materialId: data.materialId,
+        date: data.date,
+        supplierId: data.supplierId,
+        supplierName: data.supplierName,
+        quantity: data.quantity,
+        unitPrice: data.unitPrice,
+        totalPrice
+      },
       include: {
-        material: true
+        material: true,
+        supplier: true
       }
     });
 
@@ -57,7 +71,8 @@ export const materialPurchaseService = {
   },
 
   async update(id: number, data: {
-    supplier?: string;
+    supplierId?: number;
+    supplierName?: string;
     quantity?: number;
     unitPrice?: number;
     totalPrice?: number;
@@ -79,11 +94,22 @@ export const materialPurchaseService = {
       }
     }
 
+    const unitPrice = data.unitPrice ?? oldPurchase.unitPrice;
+    const quantity = data.quantity ?? oldPurchase.quantity;
+    const totalPrice = data.totalPrice ?? quantity * unitPrice;
+
     return await prisma.materialPurchase.update({
       where: { id },
-      data,
+      data: {
+        supplierId: data.supplierId,
+        supplierName: data.supplierName,
+        quantity: data.quantity,
+        unitPrice: data.unitPrice,
+        totalPrice
+      },
       include: {
-        material: true
+        material: true,
+        supplier: true
       }
     });
   },

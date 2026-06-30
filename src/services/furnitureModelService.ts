@@ -1,8 +1,14 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, ProductionStep } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 type FurnitureSize = 'SIZE_45CM' | 'SIZE_60CM' | 'SIZE_80CM' | 'SIZE_100CM' | 'SIZE_120CM';
+
+type MaterialRequirementInput = {
+  step: ProductionStep;
+  materialId: number;
+  quantity: number;
+};
 
 export const furnitureModelService = {
   async getAll() {
@@ -11,6 +17,9 @@ export const furnitureModelService = {
       include: {
         _count: {
           select: { productionOrders: true }
+        },
+        materialRequirements: {
+          include: { material: true }
         }
       }
     });
@@ -23,21 +32,69 @@ export const furnitureModelService = {
         productionOrders: {
           orderBy: { createdAt: 'desc' },
           take: 10
+        },
+        materialRequirements: {
+          include: { material: true }
         }
       }
     });
   },
 
-  async create(data: { name: string; description?: string; size: FurnitureSize }) {
+  async create(data: {
+    name: string;
+    description?: string;
+    size: FurnitureSize;
+    materialRequirements?: MaterialRequirementInput[];
+  }) {
+    const { materialRequirements, ...modelData } = data;
     return await prisma.furnitureModel.create({
-      data
+      data: {
+        ...modelData,
+        materialRequirements: materialRequirements
+          ? { create: materialRequirements }
+          : undefined
+      },
+      include: {
+        materialRequirements: {
+          include: { material: true }
+        }
+      }
     });
   },
 
-  async update(id: number, data: { name?: string; description?: string; size?: FurnitureSize }) {
-    return await prisma.furnitureModel.update({
-      where: { id },
-      data
+  async update(
+    id: number,
+    data: {
+      name?: string;
+      description?: string;
+      size?: FurnitureSize;
+      materialRequirements?: MaterialRequirementInput[];
+    }
+  ) {
+    const { materialRequirements, ...modelData } = data;
+    return await prisma.$transaction(async (tx) => {
+      if (materialRequirements) {
+        await tx.modelMaterialRequirement.deleteMany({
+          where: { modelId: id }
+        });
+        await tx.modelMaterialRequirement.createMany({
+          data: materialRequirements.map((req) => ({
+            modelId: id,
+            step: req.step,
+            materialId: req.materialId,
+            quantity: req.quantity
+          }))
+        });
+      }
+      return await tx.furnitureModel.update({
+        where: { id },
+        data: modelData,
+        include: {
+          materialRequirements: {
+            include: { material: true }
+          }
+        }
+      });
     });
   },
 
