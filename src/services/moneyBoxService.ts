@@ -53,7 +53,13 @@ export const moneyBoxService = {
   },
 
   async delete(id: number) {
-    return prisma.moneyBox.delete({ where: { id } });
+    return prisma.$transaction(async (tx) => {
+      await tx.moneyBoxTransfer.deleteMany({
+        where: { OR: [{ fromMoneyBoxId: id }, { toMoneyBoxId: id }] }
+      });
+      await tx.financialTransaction.deleteMany({ where: { moneyBoxId: id } });
+      return tx.moneyBox.delete({ where: { id } });
+    });
   },
 
   async adjustBalance(id: number, amount: number) {
