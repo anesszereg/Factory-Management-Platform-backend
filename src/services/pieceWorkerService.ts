@@ -47,6 +47,33 @@ export const pieceWorkerService = {
   },
 
   async delete(id: number) {
+    // Fetch all receipts for this worker to clean up linked expenses
+    const receipts = await prisma.dailyPieceReceipt.findMany({
+      where: { pieceWorkerId: id },
+      select: { id: true, expenseId: true },
+    });
+
+    const expenseIds = receipts
+      .map(r => r.expenseId)
+      .filter((eid): eid is number => eid !== null);
+
+    // Delete receipt items first (FK child of DailyPieceReceipt)
+    await prisma.receiptItem.deleteMany({
+      where: { receiptId: { in: receipts.map(r => r.id) } },
+    });
+
+    // Delete all receipts for this worker
+    await prisma.dailyPieceReceipt.deleteMany({
+      where: { pieceWorkerId: id },
+    });
+
+    // Delete linked daily expenses
+    if (expenseIds.length > 0) {
+      await prisma.dailyExpense.deleteMany({
+        where: { id: { in: expenseIds } },
+      });
+    }
+
     return await prisma.pieceWorker.delete({
       where: { id },
     });
