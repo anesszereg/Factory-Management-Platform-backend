@@ -16,6 +16,12 @@ import pieceWorkersRouter from './routes/pieceWorkers';
 import dailyPieceReceiptsRouter from './routes/dailyPieceReceipts';
 import suppliersRouter from './routes/suppliers';
 import ocrRouter from './routes/ocr';
+import moneyBoxesRouter from './routes/moneyBoxes';
+import financialTransactionsRouter from './routes/financialTransactions';
+import clientsRouter from './routes/clients';
+import salesRouter from './routes/sales';
+import warehousesRouter from './routes/warehouses';
+import supplierLedgerRouter from './routes/supplierLedger';
 
 dotenv.config();
 
@@ -73,6 +79,12 @@ app.use('/api/piece-workers', pieceWorkersRouter);
 app.use('/api/daily-piece-receipts', dailyPieceReceiptsRouter);
 app.use('/api/suppliers', suppliersRouter);
 app.use('/api/ocr', ocrRouter);
+app.use('/api/money-boxes', moneyBoxesRouter);
+app.use('/api/financial-transactions', financialTransactionsRouter);
+app.use('/api/clients', clientsRouter);
+app.use('/api/sales', salesRouter);
+app.use('/api/warehouses', warehousesRouter);
+app.use('/api/supplier-ledger', supplierLedgerRouter);
 
 app.use((req, res) => {
   res.status(404).json({ 

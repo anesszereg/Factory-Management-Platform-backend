@@ -25,6 +25,7 @@ model FurnitureModel {
 
   productionOrders     ProductionOrder[]
   materialRequirements ModelMaterialRequirement[]
+  inventoryItems       FinishedProductInventory[]
 
   @@map("furniture_models")
 }
@@ -46,6 +47,7 @@ model ProductionOrder {
   model               FurnitureModel        @relation(fields: [modelId], references: [id])
   dailyProduction     DailyProduction[]
   materialConsumption MaterialConsumption[]
+  pieceWorkerPayments PieceWorkerPayment[]
 
   @@map("production_orders")
 }
@@ -166,6 +168,8 @@ enum ExpenseCategory {
 
 model DailyExpense {
   id            Int             @id @default(autoincrement())
+  moneyBoxId    Int?            @map("money_box_id")
+  transactionId Int?            @unique @map("transaction_id")
   date          DateTime        @db.Date
   category      ExpenseCategory
   amount        Float
@@ -174,6 +178,8 @@ model DailyExpense {
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
+  moneyBox         MoneyBox?           @relation(fields: [moneyBoxId], references: [id])
+  transaction      FinancialTransaction? @relation(fields: [transactionId], references: [id])
   supplierPayments SupplierPayment[]
   dailyPieceReceipts DailyPieceReceipt[]
 
@@ -191,6 +197,8 @@ enum IncomeSource {
 
 model Income {
   id            Int          @id @default(autoincrement())
+  moneyBoxId    Int?         @map("money_box_id")
+  transactionId Int?       @unique @map("transaction_id")
   date          DateTime     @db.Date
   source        IncomeSource
   amount        Float
@@ -198,6 +206,9 @@ model Income {
   description   String?
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  moneyBox    MoneyBox?           @relation(fields: [moneyBoxId], references: [id])
+  transaction FinancialTransaction? @relation(fields: [transactionId], references: [id])
 
   @@map("incomes")
 }
@@ -257,6 +268,7 @@ model PieceWorker {
 
   dailyPieceReceipts  DailyPieceReceipt[]
   materialConsumption MaterialConsumption[]
+  payments            PieceWorkerPayment[]
 
   @@map("piece_workers")
 }
@@ -282,6 +294,7 @@ model DailyPieceReceipt {
   pieceWorker PieceWorker     @relation(fields: [pieceWorkerId], references: [id])
   expense     DailyExpense? @relation(fields: [expenseId], references: [id])
   items       ReceiptItem[]
+  payments    PieceWorkerPayment[]
 
   @@map("daily_piece_receipts")
 }
@@ -307,17 +320,25 @@ enum SupplierStatus {
 }
 
 model Supplier {
-  id          Int            @id @default(autoincrement())
-  name        String         @unique
-  phone       String?
-  address     String?
-  notes       String?
-  status      SupplierStatus @default(ACTIVE)
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
+  id                Int            @id @default(autoincrement())
+  name              String         @unique
+  company           String?
+  phone             String?
+  email             String?
+  address           String?
+  taxInfo           String?        @map("tax_info")
+  notes             String?
+  openingCredit     Float          @default(0) @map("opening_credit")
+  openingDebt       Float          @default(0) @map("opening_debt")
+  openingBalanceDate DateTime?     @map("opening_balance_date") @db.Date
+  status            SupplierStatus @default(ACTIVE)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
 
-  orders    SupplierOrder[]
-  purchases MaterialPurchase[]
+  orders        SupplierOrder[]
+  purchases     MaterialPurchase[]
+  transactions  SupplierTransaction[]
+  payments      SupplierPayment[]
 
   @@map("suppliers")
 }
@@ -365,18 +386,379 @@ model SupplierOrderItem {
 }
 
 model SupplierPayment {
+  id                  Int                  @id @default(autoincrement())
+  supplierId          Int                  @map("supplier_id")
+  orderId             Int?                 @map("order_id")
+  expenseId           Int?                 @map("expense_id")
+  moneyBoxId          Int?                 @map("money_box_id")
+  transactionId       Int?                 @unique @map("transaction_id")
+  date                DateTime             @db.Date
+  amount              Float
+  paymentMethod       String?              @map("payment_method")
+  notes               String?
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  supplier    Supplier             @relation(fields: [supplierId], references: [id])
+  order       SupplierOrder?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  expense     DailyExpense?        @relation(fields: [expenseId], references: [id])
+  moneyBox    MoneyBox?            @relation(fields: [moneyBoxId], references: [id])
+  transaction FinancialTransaction? @relation(fields: [transactionId], references: [id])
+
+  @@map("supplier_payments")
+}
+
+// ===================== MONEY BOX & FINANCIAL TRANSACTIONS =====================
+
+enum MoneyBoxStatus {
+  OPEN
+  CLOSED
+}
+
+model MoneyBox {
+  id             Int                  @id @default(autoincrement())
+  name           String               @unique
+  description    String?
+  currentBalance Float                @default(0) @map("current_balance")
+  status         MoneyBoxStatus       @default(OPEN)
+  responsibleUser String?             @map("responsible_user")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  transactions     FinancialTransaction[]
+  supplierPayments SupplierPayment[]
+  piecePayments    PieceWorkerPayment[]
+  salePayments     SalePayment[]
+  fromTransfers    MoneyBoxTransfer[] @relation("FromMoneyBox")
+  toTransfers      MoneyBoxTransfer[] @relation("ToMoneyBox")
+  dailyExpenses    DailyExpense[]
+  incomes          Income[]
+
+  @@map("money_boxes")
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum TransactionCategory {
+  CLIENT_PAYMENT
+  SALE
+  MANUAL_INCOME
+  OTHER_INCOME
+  SUPPLIER_PAYMENT
+  PIECE_WORKER_PAYMENT
+  EMPLOYEE_SALARY
+  UTILITY_BILL
+  RENT
+  TRANSPORTATION
+  MATERIAL_EXPENSE
+  MAINTENANCE
+  MISCELLANEOUS
+  INTERNAL_TRANSFER
+  CASH_DEPOSIT
+  CASH_WITHDRAWAL
+  OPENING_BALANCE
+}
+
+model FinancialTransaction {
+  id              Int                  @id @default(autoincrement())
+  moneyBoxId      Int                  @map("money_box_id")
+  date            DateTime             @db.Date
+  amount          Float
+  type            TransactionType
+  category        TransactionCategory
+  description     String?
+  reference       String?
+  relatedId       Int?                 @map("related_id")
+  relatedType     String?              @map("related_type")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  moneyBox        MoneyBox             @relation(fields: [moneyBoxId], references: [id])
+  supplierPayment SupplierPayment?
+  piecePayment    PieceWorkerPayment?
+  salePayment     SalePayment?
+  transfer        MoneyBoxTransfer?
+  expense         DailyExpense?
+  income          Income?
+
+  @@map("financial_transactions")
+}
+
+model MoneyBoxTransfer {
+  id              Int                  @id @default(autoincrement())
+  fromMoneyBoxId  Int                  @map("from_money_box_id")
+  toMoneyBoxId    Int                  @map("to_money_box_id")
+  transactionId   Int                  @unique @map("transaction_id")
+  amount          Float
+  date            DateTime             @db.Date
+  description     String?
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  fromMoneyBox    MoneyBox             @relation("FromMoneyBox", fields: [fromMoneyBoxId], references: [id])
+  toMoneyBox      MoneyBox             @relation("ToMoneyBox", fields: [toMoneyBoxId], references: [id])
+  transaction     FinancialTransaction @relation(fields: [transactionId], references: [id])
+
+  @@map("money_box_transfers")
+}
+
+// ===================== SUPPLIER LEDGER =====================
+
+enum SupplierTransactionType {
+  OPENING_BALANCE
+  PURCHASE
+  PAYMENT
+  CREDIT_NOTE
+  DEBIT_NOTE
+}
+
+model SupplierTransaction {
+  id            Int                     @id @default(autoincrement())
+  supplierId    Int                     @map("supplier_id")
+  date          DateTime                @db.Date
+  type          SupplierTransactionType
+  amount        Float
+  balance       Float
+  description   String?
+  referenceId   Int?                    @map("reference_id")
+  referenceType String?                 @map("reference_type")
+  createdAt     DateTime                @default(now()) @map("created_at")
+  updatedAt     DateTime                @updatedAt @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@map("supplier_transactions")
+}
+
+// ===================== CLIENT & SALES =====================
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Client {
+  id              Int           @id @default(autoincrement())
+  firstName       String        @map("first_name")
+  lastName        String        @map("last_name")
+  company         String?
+  phone           String?
+  email           String?
+  address         String?
+  creditLimit     Float         @default(0) @map("credit_limit")
+  outstandingBalance Float      @default(0) @map("outstanding_balance")
+  notes           String?
+  status          ClientStatus  @default(ACTIVE)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  sales          SalesOrder[]
+  salePayments   SalePayment[]
+  transactions   ClientTransaction[]
+
+  @@map("clients")
+}
+
+enum ClientTransactionType {
+  OPENING_BALANCE
+  SALE
+  PAYMENT
+  CREDIT_NOTE
+  DEBIT_NOTE
+}
+
+model ClientTransaction {
+  id            Int                  @id @default(autoincrement())
+  clientId      Int                  @map("client_id")
+  date          DateTime             @db.Date
+  type          ClientTransactionType
+  amount        Float
+  balance       Float
+  description   String?
+  referenceId   Int?                 @map("reference_id")
+  referenceType String?              @map("reference_type")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("client_transactions")
+}
+
+enum SalesOrderStatus {
+  DRAFT
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CHECK
+  BANK_TRANSFER
+  CREDIT
+  OTHER
+}
+
+model SalesOrder {
+  id              Int               @id @default(autoincrement())
+  clientId        Int               @map("client_id")
+  salesperson     String?
+  orderDate       DateTime          @map("order_date") @db.Date
+  status          SalesOrderStatus  @default(DRAFT)
+  subtotal        Float             @default(0)
+  discount        Float             @default(0)
+  tax             Float             @default(0)
+  total           Float             @default(0)
+  paidAmount      Float             @default(0) @map("paid_amount")
+  paymentStatus   PaymentStatus     @default(NOT_PAID) @map("payment_status")
+  notes           String?
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  client    Client          @relation(fields: [clientId], references: [id])
+  items     SalesOrderItem[]
+  payments  SalePayment[]
+
+  @@map("sales_orders")
+}
+
+model SalesOrderItem {
   id            Int      @id @default(autoincrement())
   orderId       Int      @map("order_id")
-  expenseId     Int?     @map("expense_id")
-  date          DateTime @db.Date
-  amount        Float
-  paymentMethod String?  @map("payment_method")
-  notes         String?
+  productId     Int      @map("product_id")
+  quantity      Int
+  unitPrice     Float    @map("unit_price")
+  discount      Float    @default(0)
+  total         Float
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  order   SupplierOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  expense DailyExpense? @relation(fields: [expenseId], references: [id])
+  order   SalesOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product FinishedProductInventory @relation(fields: [productId], references: [id])
 
-  @@map("supplier_payments")
+  @@map("sales_order_items")
+}
+
+model SalePayment {
+  id              Int                  @id @default(autoincrement())
+  orderId         Int                  @map("order_id")
+  clientId        Int                  @map("client_id")
+  moneyBoxId      Int                  @map("money_box_id")
+  transactionId   Int?                 @unique @map("transaction_id")
+  date            DateTime             @db.Date
+  amount          Float
+  paymentMethod   PaymentMethod        @map("payment_method")
+  reference       String?
+  notes           String?
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  order       SalesOrder            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  client      Client                @relation(fields: [clientId], references: [id])
+  moneyBox    MoneyBox              @relation(fields: [moneyBoxId], references: [id])
+  transaction FinancialTransaction? @relation(fields: [transactionId], references: [id])
+
+  @@map("sale_payments")
+}
+
+// ===================== WAREHOUSE & FINISHED GOODS INVENTORY =====================
+
+model Warehouse {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  code        String?
+  address     String?
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  inventoryItems FinishedProductInventory[]
+  fromMovements  InventoryMovement[] @relation("FromWarehouse")
+  toMovements    InventoryMovement[] @relation("ToWarehouse")
+
+  @@map("warehouses")
+}
+
+model FinishedProductInventory {
+  id              Int                  @id @default(autoincrement())
+  modelId         Int                  @map("model_id")
+  warehouseId     Int                  @map("warehouse_id")
+  sku             String               @unique
+  quantity        Int                  @default(0)
+  productionCost  Float                @default(0) @map("production_cost")
+  batchNumber     String?              @map("batch_number")
+  productionDate  DateTime?            @map("production_date") @db.Date
+  status          String               @default("AVAILABLE")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  model     FurnitureModel       @relation(fields: [modelId], references: [id])
+  warehouse Warehouse            @relation(fields: [warehouseId], references: [id])
+  movements InventoryMovement[]
+  saleItems SalesOrderItem[]
+
+  @@map("finished_product_inventory")
+}
+
+enum InventoryMovementType {
+  PRODUCTION_IN
+  SALE_OUT
+  TRANSFER
+  ADJUSTMENT
+  RETURN_IN
+  RETURN_OUT
+}
+
+model InventoryMovement {
+  id              Int                   @id @default(autoincrement())
+  productId       Int                   @map("product_id")
+  fromWarehouseId Int?                  @map("from_warehouse_id")
+  toWarehouseId   Int?                  @map("to_warehouse_id")
+  type            InventoryMovementType
+  quantity        Int
+  date            DateTime              @db.Date
+  referenceId     Int?                  @map("reference_id")
+  referenceType   String?               @map("reference_type")
+  notes           String?
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  product       FinishedProductInventory @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fromWarehouse Warehouse?               @relation("FromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse?               @relation("ToWarehouse", fields: [toWarehouseId], references: [id])
+
+  @@map("inventory_movements")
+}
+
+// ===================== PIECE WORKER PAYMENTS =====================
+
+model PieceWorkerPayment {
+  id              Int                  @id @default(autoincrement())
+  pieceWorkerId   Int                  @map("piece_worker_id")
+  orderId         Int?                 @map("order_id")
+  receiptId       Int?                 @map("receipt_id")
+  moneyBoxId      Int                  @map("money_box_id")
+  transactionId   Int?                 @unique @map("transaction_id")
+  date            DateTime             @db.Date
+  quantity        Int
+  ratePerUnit     Float                @map("rate_per_unit")
+  totalAmount     Float                @map("total_amount")
+  paymentStatus   PaymentStatus        @default(PAID) @map("payment_status")
+  notes           String?
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  pieceWorker PieceWorker           @relation(fields: [pieceWorkerId], references: [id])
+  order       ProductionOrder?      @relation(fields: [orderId], references: [id])
+  receipt     DailyPieceReceipt?    @relation(fields: [receiptId], references: [id])
+  moneyBox    MoneyBox              @relation(fields: [moneyBoxId], references: [id])
+  transaction FinancialTransaction? @relation(fields: [transactionId], references: [id])
+
+  @@map("piece_worker_payments")
 }

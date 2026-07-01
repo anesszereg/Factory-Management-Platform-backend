@@ -240,6 +240,7 @@ export const supplierService = {
     // Create payment
     const payment = await prisma.supplierPayment.create({
       data: {
+        supplierId: order.supplierId,
         orderId: data.orderId,
         date: data.date,
         amount: data.amount,
@@ -284,17 +285,17 @@ export const supplierService = {
     }
 
     // Update order paid amount
-    const newPaidAmount = payment.order.paidAmount - payment.amount;
-    let newStatus: SupplierOrderStatus = payment.order.status;
+    const newPaidAmount = (payment.order?.paidAmount ?? 0) - payment.amount;
+    let newStatus: SupplierOrderStatus = payment.order?.status ?? 'PENDING';
 
     if (newPaidAmount <= 0) {
       newStatus = 'PENDING';
-    } else if (newPaidAmount < payment.order.totalAmount) {
+    } else if (newPaidAmount < (payment.order?.totalAmount ?? 0)) {
       newStatus = 'PARTIAL';
     }
 
     await prisma.supplierOrder.update({
-      where: { id: payment.orderId },
+      where: { id: payment.orderId ?? 0 },
       data: {
         paidAmount: Math.max(0, newPaidAmount),
         status: newStatus,
