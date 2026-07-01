@@ -28,6 +28,7 @@ const corsOptions = {
     'http://localhost:3000',
     'http://localhost:3001',
     'https://factory-managment-front-end-mn9j.vercel.app',
+    'https://lune-sanitaire.vercel.app',
     /\.vercel\.app$/
   ],
   credentials: true,
