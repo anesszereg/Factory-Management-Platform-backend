@@ -12,6 +12,23 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
 
+router.get('/status', async (req, res) => {
+  try {
+    const { stdout: pythonVersion } = await execAsync('python3 --version');
+    const { stdout: pipList } = await execAsync('python3 -m pip list');
+    const hasPaddleOcr = pipList.toLowerCase().includes('paddleocr');
+    res.json({
+      python: pythonVersion.trim(),
+      paddleocrInstalled: hasPaddleOcr,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Python environment check failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 router.post('/', upload.single('image'), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: 'No image uploaded' });
@@ -25,25 +42,40 @@ router.post('/', upload.single('image'), async (req, res) => {
 
     const scriptPath = path.join(process.cwd(), 'scripts', 'ocr.py');
     const { stdout, stderr } = await execAsync(`python3 "${scriptPath}" "${tempPath}"`, {
-      timeout: 120000,
+      timeout: 600000,
     });
 
     if (stderr) {
       console.error('OCR stderr:', stderr);
     }
 
-    const result = JSON.parse(stdout);
+    let result: { text?: string; error?: string };
+    try {
+      result = JSON.parse(stdout);
+    } catch {
+      res.status(500).json({
+        error: 'OCR returned invalid JSON',
+        stdout,
+        stderr,
+      });
+      return;
+    }
+
     if (result.error) {
-      res.status(500).json({ error: result.error });
+      res.status(500).json({ error: result.error, stderr });
       return;
     }
 
     res.json({ text: result.text });
   } catch (error) {
+    const execError = error as any;
     console.error('OCR processing failed:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const stderr = execError?.stderr ? String(execError.stderr) : undefined;
     res.status(500).json({
       error: 'OCR processing failed',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message,
+      stderr,
     });
   } finally {
     try {

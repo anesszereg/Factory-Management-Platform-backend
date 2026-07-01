@@ -11,7 +11,7 @@
     "start:prod": "NODE_ENV=production node dist/server.js",
     "clean": "rm -rf dist",
     "postinstall": "prisma generate && npm run install:python",
-    "install:python": "python3 -m pip install -r requirements.txt",
+    "install:python": "python3 -m pip install --no-cache-dir --no-warn-script-location -r requirements.txt",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
