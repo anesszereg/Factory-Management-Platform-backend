@@ -29,12 +29,13 @@ export const rawMaterialController = {
 
   async create(req: Request, res: Response) {
     try {
-      const { name, unit, currentStock, minStockAlert } = req.body;
+      const { name, unit, currentStock, minStockAlert, purchasePrice } = req.body;
       const material = await rawMaterialService.create({
         name,
         unit: unit as MaterialUnit,
         currentStock: currentStock ? parseFloat(currentStock) : undefined,
-        minStockAlert: minStockAlert ? parseFloat(minStockAlert) : undefined
+        minStockAlert: minStockAlert ? parseFloat(minStockAlert) : undefined,
+        purchasePrice: purchasePrice ? parseFloat(purchasePrice) : undefined
       });
       res.status(201).json(material);
     } catch (error: any) {
@@ -45,11 +46,12 @@ export const rawMaterialController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { name, unit, minStockAlert } = req.body;
+      const { name, unit, minStockAlert, purchasePrice } = req.body;
       const material = await rawMaterialService.update(id, {
         name,
         unit: unit as MaterialUnit,
-        minStockAlert: minStockAlert ? parseFloat(minStockAlert) : undefined
+        minStockAlert: minStockAlert ? parseFloat(minStockAlert) : undefined,
+        purchasePrice: purchasePrice ? parseFloat(purchasePrice) : undefined
       });
       res.json(material);
     } catch (error: any) {

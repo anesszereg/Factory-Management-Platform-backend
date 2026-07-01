@@ -38,6 +38,7 @@ export const rawMaterialService = {
     unit: MaterialUnit;
     currentStock?: number;
     minStockAlert?: number;
+    purchasePrice?: number;
   }) {
     return await prisma.rawMaterial.create({
       data
@@ -48,6 +49,7 @@ export const rawMaterialService = {
     name?: string;
     unit?: MaterialUnit;
     minStockAlert?: number;
+    purchasePrice?: number;
   }) {
     return await prisma.rawMaterial.update({
       where: { id },
