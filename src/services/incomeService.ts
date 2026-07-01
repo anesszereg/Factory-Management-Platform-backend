@@ -20,13 +20,15 @@ export const incomeService = {
 
     return await prisma.income.findMany({
       where,
+      include: { moneyBox: { select: { id: true, name: true } } },
       orderBy: { date: 'desc' }
     });
   },
 
   async getById(id: number) {
     return await prisma.income.findUnique({
-      where: { id }
+      where: { id },
+      include: { moneyBox: { select: { id: true, name: true } } }
     });
   },
 
@@ -34,14 +36,21 @@ export const incomeService = {
     date: string;
     source: IncomeSource;
     amount: number;
+    moneyBoxId?: number;
     paymentMethod?: string;
     description?: string;
   }) {
-    return await prisma.income.create({
-      data: {
-        ...data,
-        date: new Date(data.date)
+    return await prisma.$transaction(async (tx) => {
+      const income = await tx.income.create({
+        data: { ...data, date: new Date(data.date) }
+      });
+      if (data.moneyBoxId) {
+        await tx.moneyBox.update({
+          where: { id: data.moneyBoxId },
+          data: { currentBalance: { increment: data.amount } }
+        });
       }
+      return income;
     });
   },
 
@@ -51,24 +60,35 @@ export const incomeService = {
       date?: string;
       source?: IncomeSource;
       amount?: number;
+      moneyBoxId?: number;
       paymentMethod?: string;
       description?: string;
     }
   ) {
-    const updateData: any = { ...data };
-    if (data.date) {
-      updateData.date = new Date(data.date);
-    }
-
-    return await prisma.income.update({
-      where: { id },
-      data: updateData
+    return await prisma.$transaction(async (tx) => {
+      const old = await tx.income.findUnique({ where: { id } });
+      if (old?.moneyBoxId && data.amount !== undefined) {
+        await tx.moneyBox.update({
+          where: { id: old.moneyBoxId },
+          data: { currentBalance: { increment: data.amount - old.amount } }
+        });
+      }
+      const updateData: any = { ...data };
+      if (data.date) updateData.date = new Date(data.date);
+      return tx.income.update({ where: { id }, data: updateData });
     });
   },
 
   async delete(id: number) {
-    return await prisma.income.delete({
-      where: { id }
+    return await prisma.$transaction(async (tx) => {
+      const income = await tx.income.findUnique({ where: { id } });
+      if (income?.moneyBoxId) {
+        await tx.moneyBox.update({
+          where: { id: income.moneyBoxId },
+          data: { currentBalance: { decrement: income.amount } }
+        });
+      }
+      return tx.income.delete({ where: { id } });
     });
   },
 

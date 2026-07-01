@@ -10,6 +10,7 @@ export const dailyExpenseService = {
     endDate?: Date;
   }) {
     return await prisma.dailyExpense.findMany({
+      include: { moneyBox: { select: { id: true, name: true } } },
       where: {
         ...(filters?.category && { category: filters.category }),
         ...(filters?.startDate && filters?.endDate && {
@@ -25,7 +26,8 @@ export const dailyExpenseService = {
 
   async getById(id: number) {
     return await prisma.dailyExpense.findUnique({
-      where: { id }
+      where: { id },
+      include: { moneyBox: { select: { id: true, name: true } } }
     });
   },
 
@@ -33,11 +35,19 @@ export const dailyExpenseService = {
     date: Date;
     category: ExpenseCategory;
     amount: number;
+    moneyBoxId?: number;
     paymentMethod?: string;
     description?: string;
   }) {
-    return await prisma.dailyExpense.create({
-      data
+    return await prisma.$transaction(async (tx) => {
+      const expense = await tx.dailyExpense.create({ data });
+      if (data.moneyBoxId) {
+        await tx.moneyBox.update({
+          where: { id: data.moneyBoxId },
+          data: { currentBalance: { decrement: data.amount } }
+        });
+      }
+      return expense;
     });
   },
 
@@ -45,18 +55,32 @@ export const dailyExpenseService = {
     date?: Date;
     category?: ExpenseCategory;
     amount?: number;
+    moneyBoxId?: number;
     paymentMethod?: string;
     description?: string;
   }) {
-    return await prisma.dailyExpense.update({
-      where: { id },
-      data
+    return await prisma.$transaction(async (tx) => {
+      const old = await tx.dailyExpense.findUnique({ where: { id } });
+      if (old?.moneyBoxId && data.amount !== undefined) {
+        await tx.moneyBox.update({
+          where: { id: old.moneyBoxId },
+          data: { currentBalance: { increment: old.amount - (data.amount ?? old.amount) } }
+        });
+      }
+      return tx.dailyExpense.update({ where: { id }, data });
     });
   },
 
   async delete(id: number) {
-    return await prisma.dailyExpense.delete({
-      where: { id }
+    return await prisma.$transaction(async (tx) => {
+      const expense = await tx.dailyExpense.findUnique({ where: { id } });
+      if (expense?.moneyBoxId) {
+        await tx.moneyBox.update({
+          where: { id: expense.moneyBoxId },
+          data: { currentBalance: { increment: expense.amount } }
+        });
+      }
+      return tx.dailyExpense.delete({ where: { id } });
     });
   },
 

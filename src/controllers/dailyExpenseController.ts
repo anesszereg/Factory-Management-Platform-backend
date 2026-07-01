@@ -34,11 +34,12 @@ export const dailyExpenseController = {
 
   async create(req: Request, res: Response) {
     try {
-      const { date, category, amount, paymentMethod, description } = req.body;
+      const { date, category, amount, moneyBoxId, paymentMethod, description } = req.body;
       const expense = await dailyExpenseService.create({
         date: date ? new Date(date) : new Date(),
         category: category as ExpenseCategory,
         amount: parseFloat(amount),
+        moneyBoxId: moneyBoxId ? parseInt(moneyBoxId) : undefined,
         paymentMethod,
         description
       });
@@ -51,11 +52,12 @@ export const dailyExpenseController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { date, category, amount, paymentMethod, description } = req.body;
+      const { date, category, amount, moneyBoxId, paymentMethod, description } = req.body;
       const expense = await dailyExpenseService.update(id, {
         date: date ? new Date(date) : undefined,
         category: category as ExpenseCategory,
         amount: amount ? parseFloat(amount) : undefined,
+        moneyBoxId: moneyBoxId ? parseInt(moneyBoxId) : undefined,
         paymentMethod,
         description
       });
