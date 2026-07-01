@@ -40,7 +40,16 @@ export const dailyExpenseService = {
     description?: string;
   }) {
     return await prisma.$transaction(async (tx) => {
-      const expense = await tx.dailyExpense.create({ data });
+      const expense = await tx.dailyExpense.create({
+        data: {
+          date: data.date,
+          category: data.category,
+          amount: data.amount,
+          paymentMethod: data.paymentMethod,
+          description: data.description,
+          ...(data.moneyBoxId ? { moneyBox: { connect: { id: data.moneyBoxId } } } : {})
+        }
+      });
       if (data.moneyBoxId) {
         await tx.moneyBox.update({
           where: { id: data.moneyBoxId },
