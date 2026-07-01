@@ -34,7 +34,7 @@ git push origin main
   ```bash
   npm install && npm run build
   ```
-  This will also install Python dependencies (PaddleOCR). It may take 5–10 minutes on the first build.
+  This will also install Python dependencies (EasyOCR). It may take 5–10 minutes on the first build.
   
 - **Start Command**: 
   ```bash
@@ -42,7 +42,7 @@ git push origin main
   ```
 
 **Instance Type:**
-- Select **Free** tier (note: PaddleOCR needs more than 512 MB RAM to install and run, so the free tier may fail. Use **Starter** or higher if possible).
+- Select **Free** tier (EasyOCR is lighter than PaddleOCR, but the first build still downloads PyTorch models. If the build fails due to memory, use **Starter** or higher).
 
 ### 4. Add Environment Variables
 

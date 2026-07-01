@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OCR script using PaddleOCR.
+"""OCR script using EasyOCR.
 
 Usage:
     python ocr.py <image_path>
@@ -12,9 +12,9 @@ import sys
 import os
 
 try:
-    from paddleocr import PaddleOCR
+    import easyocr
 except ImportError:
-    print(json.dumps({"error": "PaddleOCR not installed. Run: pip install paddleocr"}))
+    print(json.dumps({"error": "EasyOCR not installed. Run: pip install easyocr"}))
     sys.exit(1)
 
 
@@ -29,14 +29,10 @@ def main():
         sys.exit(1)
 
     try:
-        ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
-        result = ocr.ocr(image_path, cls=True)
+        reader = easyocr.Reader(['en'], gpu=False)
+        result = reader.readtext(image_path)
 
-        lines = []
-        if result and result[0]:
-            for line in result[0]:
-                if line[1]:
-                    lines.append(str(line[1][0]))
+        lines = [str(item[1]) for item in result]
 
         print(json.dumps({"text": "\n".join(lines)}))
     except Exception as e:

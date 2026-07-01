@@ -16,10 +16,10 @@ router.get('/status', async (req, res) => {
   try {
     const { stdout: pythonVersion } = await execAsync('python3 --version');
     const { stdout: pipList } = await execAsync('python3 -m pip list');
-    const hasPaddleOcr = pipList.toLowerCase().includes('paddleocr');
+    const hasEasyOcr = pipList.toLowerCase().includes('easyocr');
     res.json({
       python: pythonVersion.trim(),
-      paddleocrInstalled: hasPaddleOcr,
+      easyocrInstalled: hasEasyOcr,
     });
   } catch (error) {
     res.status(500).json({
