@@ -15,6 +15,7 @@ import salaryAllowancesRouter from './routes/salaryAllowances';
 import pieceWorkersRouter from './routes/pieceWorkers';
 import dailyPieceReceiptsRouter from './routes/dailyPieceReceipts';
 import suppliersRouter from './routes/suppliers';
+import ocrRouter from './routes/ocr';
 
 dotenv.config();
 
@@ -70,6 +71,7 @@ app.use('/api/salary-allowances', salaryAllowancesRouter);
 app.use('/api/piece-workers', pieceWorkersRouter);
 app.use('/api/daily-piece-receipts', dailyPieceReceiptsRouter);
 app.use('/api/suppliers', suppliersRouter);
+app.use('/api/ocr', ocrRouter);
 
 app.use((req, res) => {
   res.status(404).json({ 
