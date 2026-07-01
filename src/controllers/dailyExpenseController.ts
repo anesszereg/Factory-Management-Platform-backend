@@ -35,6 +35,7 @@ export const dailyExpenseController = {
   async create(req: Request, res: Response) {
     try {
       const { date, category, amount, moneyBoxId, paymentMethod, description } = req.body;
+      console.log('[createExpense] moneyBoxId received:', moneyBoxId, typeof moneyBoxId);
       const expense = await dailyExpenseService.create({
         date: date ? new Date(date) : new Date(),
         category: category as ExpenseCategory,

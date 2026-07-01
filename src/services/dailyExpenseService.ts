@@ -51,10 +51,13 @@ export const dailyExpenseService = {
         }
       });
       if (data.moneyBoxId) {
+        console.log('[dailyExpenseService.create] decrementing moneyBox', data.moneyBoxId, 'by', data.amount);
         await tx.moneyBox.update({
           where: { id: data.moneyBoxId },
           data: { currentBalance: { decrement: data.amount } }
         });
+      } else {
+        console.log('[dailyExpenseService.create] no moneyBoxId, skipping balance update');
       }
       return expense;
     });
