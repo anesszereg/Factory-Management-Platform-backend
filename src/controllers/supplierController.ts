@@ -31,12 +31,15 @@ export const supplierController = {
 
   async create(req: Request, res: Response) {
     try {
-      const { name, phone, address, notes, status } = req.body;
+      const { name, phone, address, notes, openingCredit, openingDebt, openingBalanceDate, status } = req.body;
       const supplier = await supplierService.create({
         name,
         phone,
         address,
         notes,
+        openingCredit: openingCredit ? parseFloat(openingCredit) : 0,
+        openingDebt: openingDebt ? parseFloat(openingDebt) : 0,
+        openingBalanceDate,
         status: status as SupplierStatus,
       });
       res.status(201).json(supplier);
@@ -48,12 +51,15 @@ export const supplierController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { name, phone, address, notes, status } = req.body;
+      const { name, phone, address, notes, openingCredit, openingDebt, openingBalanceDate, status } = req.body;
       const supplier = await supplierService.update(id, {
         name,
         phone,
         address,
         notes,
+        openingCredit: openingCredit ? parseFloat(openingCredit) : undefined,
+        openingDebt: openingDebt ? parseFloat(openingDebt) : undefined,
+        openingBalanceDate,
         status: status as SupplierStatus,
       });
       res.json(supplier);
