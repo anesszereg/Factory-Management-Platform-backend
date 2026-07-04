@@ -50,6 +50,9 @@ export const supplierService = {
     phone?: string;
     address?: string;
     notes?: string;
+    openingCredit?: number;
+    openingDebt?: number;
+    openingBalanceDate?: string;
     status?: SupplierStatus;
   }) {
     return prisma.supplier.create({
@@ -62,6 +65,9 @@ export const supplierService = {
     phone?: string;
     address?: string;
     notes?: string;
+    openingCredit?: number;
+    openingDebt?: number;
+    openingBalanceDate?: string;
     status?: SupplierStatus;
   }) {
     return prisma.supplier.update({
