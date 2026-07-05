@@ -33,9 +33,14 @@ export const clientService = {
     address?: string;
     creditLimit?: number;
     notes?: string;
-    openingBalance?: number;
+    openingCredit?: number;
+    openingDebt?: number;
+    openingBalanceDate?: string;
   }) {
     return prisma.$transaction(async (tx) => {
+      const openingCredit = data.openingCredit ?? 0;
+      const openingDebt = data.openingDebt ?? 0;
+      const outstandingBalance = openingDebt - openingCredit;
       const client = await tx.client.create({
         data: {
           firstName: data.firstName,
@@ -45,18 +50,21 @@ export const clientService = {
           email: data.email,
           address: data.address,
           creditLimit: data.creditLimit ?? 0,
-          outstandingBalance: data.openingBalance ?? 0,
+          outstandingBalance,
+          openingCredit,
+          openingDebt,
+          openingBalanceDate: data.openingBalanceDate ? new Date(data.openingBalanceDate) : undefined,
           notes: data.notes,
         }
       });
-      if (data.openingBalance && data.openingBalance !== 0) {
+      if (openingCredit !== 0 || openingDebt !== 0) {
         await tx.clientTransaction.create({
           data: {
             clientId: client.id,
-            date: new Date(),
+            date: data.openingBalanceDate ? new Date(data.openingBalanceDate) : new Date(),
             type: ClientTransactionType.OPENING_BALANCE,
-            amount: Math.abs(data.openingBalance),
-            balance: data.openingBalance,
+            amount: Math.abs(outstandingBalance),
+            balance: outstandingBalance,
             description: 'Opening balance',
           }
         });
@@ -75,8 +83,22 @@ export const clientService = {
     creditLimit?: number;
     notes?: string;
     status?: ClientStatus;
+    openingCredit?: number;
+    openingDebt?: number;
+    openingBalanceDate?: string;
   }) {
-    return prisma.client.update({ where: { id }, data });
+    const updateData: any = { ...data };
+    if (data.openingBalanceDate) {
+      updateData.openingBalanceDate = new Date(data.openingBalanceDate);
+    }
+    if (data.openingCredit !== undefined || data.openingDebt !== undefined) {
+      const current = await prisma.client.findUnique({ where: { id } });
+      if (current) {
+        updateData.outstandingBalance =
+          (data.openingDebt ?? current.openingDebt) - (data.openingCredit ?? current.openingCredit);
+      }
+    }
+    return prisma.client.update({ where: { id }, data: updateData });
   },
 
   async delete(id: number) {

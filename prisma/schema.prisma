@@ -577,19 +577,22 @@ enum ClientStatus {
 }
 
 model Client {
-  id              Int           @id @default(autoincrement())
-  firstName       String        @map("first_name")
-  lastName        String        @map("last_name")
-  company         String?
-  phone           String?
-  email           String?
-  address         String?
-  creditLimit     Float         @default(0) @map("credit_limit")
-  outstandingBalance Float      @default(0) @map("outstanding_balance")
-  notes           String?
-  status          ClientStatus  @default(ACTIVE)
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  id                Int           @id @default(autoincrement())
+  firstName         String        @map("first_name")
+  lastName          String        @map("last_name")
+  company           String?
+  phone             String?
+  email             String?
+  address           String?
+  creditLimit       Float         @default(0) @map("credit_limit")
+  outstandingBalance Float       @default(0) @map("outstanding_balance")
+  openingCredit     Float         @default(0) @map("opening_credit")
+  openingDebt       Float         @default(0) @map("opening_debt")
+  openingBalanceDate DateTime?    @map("opening_balance_date") @db.Date
+  notes             String?
+  status            ClientStatus  @default(ACTIVE)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
 
   sales          SalesOrder[]
   salePayments   SalePayment[]
