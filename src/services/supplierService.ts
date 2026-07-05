@@ -340,7 +340,9 @@ export const supplierService = {
     const totalOrders = supplier.orders.length;
     const totalAmount = supplier.orders.reduce((sum, o) => sum + o.totalAmount, 0);
     const totalPaid = supplier.orders.reduce((sum, o) => sum + o.paidAmount, 0);
-    const totalRemaining = totalAmount - totalPaid;
+    const openingCredit = supplier.openingCredit || 0;
+    const openingDebt = supplier.openingDebt || 0;
+    const totalRemaining = totalAmount - totalPaid + openingDebt - openingCredit;
     const pendingOrders = supplier.orders.filter(o => o.status === 'PENDING').length;
     const partialOrders = supplier.orders.filter(o => o.status === 'PARTIAL').length;
     const completedOrders = supplier.orders.filter(o => o.status === 'COMPLETED').length;
@@ -351,6 +353,8 @@ export const supplierService = {
       totalAmount,
       totalPaid,
       totalRemaining,
+      openingCredit,
+      openingDebt,
       pendingOrders,
       partialOrders,
       completedOrders,
