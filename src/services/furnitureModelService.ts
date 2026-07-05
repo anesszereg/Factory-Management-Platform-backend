@@ -8,6 +8,7 @@ type MaterialRequirementInput = {
   step: ProductionStep;
   materialId: number;
   quantity: number;
+  price?: number;
 };
 
 export const furnitureModelService = {
@@ -82,7 +83,8 @@ export const furnitureModelService = {
             modelId: id,
             step: req.step,
             materialId: req.materialId,
-            quantity: req.quantity
+            quantity: req.quantity,
+            price: req.price ?? 0
           }))
         });
       }
