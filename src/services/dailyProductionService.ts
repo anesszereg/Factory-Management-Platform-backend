@@ -106,6 +106,20 @@ export const dailyProductionService = {
 
     if (!order || order.status !== 'IN_PROGRESS') return;
 
+    const allSteps = Object.values(ProductionStep);
+    const records = await prisma.dailyProduction.findMany({
+      where: { orderId }
+    });
+    const stepCompleted: Record<string, number> = {};
+    records.forEach(r => {
+      stepCompleted[r.step] = (stepCompleted[r.step] || 0) + r.quantityCompleted;
+    });
+    const allStepsCompleted = allSteps.every(step => (stepCompleted[step] || 0) >= order.quantity);
+    if (!allStepsCompleted) {
+      console.warn(`Order ${orderId} has not completed all production steps; skipping auto-stock insertion`);
+      return;
+    }
+
     const paintRecords = await prisma.dailyProduction.findMany({
       where: { orderId, step: ProductionStep.PAINT },
       include: { colorSplits: true }
