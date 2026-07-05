@@ -3,7 +3,10 @@ import { startOfDay, endOfDay } from 'date-fns';
 
 const prisma = new PrismaClient();
 
+type TransactionClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
 async function syncPieceWorkerExpense(
+  tx: TransactionClient,
   receipt: {
     id: number;
     date: Date;
@@ -11,11 +14,16 @@ async function syncPieceWorkerExpense(
     expenseId: number | null;
     pieceWorker?: { firstName: string; lastName: string } | null;
   },
-  createExpense: boolean
+  createExpense: boolean,
+  moneyBoxId?: number
 ) {
   if (!createExpense || receipt.paidAmount <= 0) {
     if (receipt.expenseId) {
-      await prisma.dailyExpense.delete({ where: { id: receipt.expenseId } }).catch(() => {});
+      const existing = await tx.dailyExpense.findUnique({ where: { id: receipt.expenseId } });
+      if (existing?.moneyBoxId) {
+        await tx.moneyBox.update({ where: { id: existing.moneyBoxId }, data: { currentBalance: { increment: existing.amount } } });
+      }
+      await tx.dailyExpense.delete({ where: { id: receipt.expenseId } }).catch(() => {});
     }
     return null;
   }
@@ -25,24 +33,47 @@ async function syncPieceWorkerExpense(
     : 'Piece worker payment';
 
   if (receipt.expenseId) {
-    return await prisma.dailyExpense.update({
-      where: { id: receipt.expenseId },
-      data: {
-        date: receipt.date,
-        amount: receipt.paidAmount,
-        description,
-      },
-    });
+    const existing = await tx.dailyExpense.findUnique({ where: { id: receipt.expenseId } });
+    if (existing) {
+      // Restore old money box if changed
+      if (existing.moneyBoxId && existing.moneyBoxId !== moneyBoxId) {
+        await tx.moneyBox.update({ where: { id: existing.moneyBoxId }, data: { currentBalance: { increment: existing.amount } } });
+      }
+      // Adjust balance on same money box if amount changed
+      if (existing.moneyBoxId && existing.moneyBoxId === moneyBoxId) {
+        await tx.moneyBox.update({ where: { id: existing.moneyBoxId }, data: { currentBalance: { increment: existing.amount - receipt.paidAmount } } });
+      }
+      // Decrement new money box if changed
+      if (moneyBoxId && existing.moneyBoxId !== moneyBoxId) {
+        await tx.moneyBox.update({ where: { id: moneyBoxId }, data: { currentBalance: { decrement: receipt.paidAmount } } });
+      }
+      return await tx.dailyExpense.update({
+        where: { id: receipt.expenseId },
+        data: {
+          date: receipt.date,
+          amount: receipt.paidAmount,
+          description,
+          ...(moneyBoxId ? { moneyBox: { connect: { id: moneyBoxId } } } : { moneyBox: { disconnect: true } }),
+        },
+      });
+    }
   }
 
-  return await prisma.dailyExpense.create({
+  const expense = await tx.dailyExpense.create({
     data: {
       date: receipt.date,
       category: 'OTHER',
       amount: receipt.paidAmount,
       description,
+      ...(moneyBoxId ? { moneyBox: { connect: { id: moneyBoxId } } } : {}),
     },
   });
+
+  if (moneyBoxId) {
+    await tx.moneyBox.update({ where: { id: moneyBoxId }, data: { currentBalance: { decrement: receipt.paidAmount } } });
+  }
+
+  return expense;
 }
 
 interface ReceiptItemInput {
@@ -96,60 +127,54 @@ export const dailyPieceReceiptService = {
     paidAmount?: number;
     notes?: string;
     createExpense?: boolean;
+    moneyBoxId?: number;
   }) {
-    // Calculate total from items
-    const itemsWithTotal = data.items.map(item => ({
-      ...item,
-      totalPrice: item.quantity * item.pricePerPiece,
-    }));
-    
-    const totalAmount = itemsWithTotal.reduce((sum, item) => sum + item.totalPrice, 0);
-    const paidAmount = data.paidAmount || 0;
-    
-    // Determine payment status
-    let paymentStatus: PaymentStatus = PaymentStatus.NOT_PAID;
-    if (paidAmount >= totalAmount) {
-      paymentStatus = PaymentStatus.PAID;
-    } else if (paidAmount > 0) {
-      paymentStatus = PaymentStatus.PART_PAID;
-    }
+    return await prisma.$transaction(async (tx) => {
+      const itemsWithTotal = data.items.map(item => ({
+        ...item,
+        totalPrice: item.quantity * item.pricePerPiece,
+      }));
 
-    // Fetch worker for expense description
-    const pieceWorker = await prisma.pieceWorker.findUnique({
-      where: { id: data.pieceWorkerId },
-    });
+      const totalAmount = itemsWithTotal.reduce((sum, item) => sum + item.totalPrice, 0);
+      const paidAmount = data.paidAmount || 0;
 
-    let expenseId: number | undefined;
-    if (data.createExpense && paidAmount > 0 && pieceWorker) {
-      const expense = await prisma.dailyExpense.create({
+      let paymentStatus: PaymentStatus = PaymentStatus.NOT_PAID;
+      if (paidAmount >= totalAmount) {
+        paymentStatus = PaymentStatus.PAID;
+      } else if (paidAmount > 0) {
+        paymentStatus = PaymentStatus.PART_PAID;
+      }
+
+      const pieceWorker = await tx.pieceWorker.findUnique({
+        where: { id: data.pieceWorkerId },
+      });
+
+      const expense = await syncPieceWorkerExpense(
+        tx,
+        { id: 0, date: data.date, paidAmount, expenseId: null, pieceWorker },
+        !!data.createExpense,
+        data.moneyBoxId
+      );
+
+      return await tx.dailyPieceReceipt.create({
         data: {
+          pieceWorkerId: data.pieceWorkerId,
           date: data.date,
-          category: 'OTHER',
-          amount: paidAmount,
-          description: `Piece worker payment: ${pieceWorker.firstName} ${pieceWorker.lastName}`,
+          expenseId: expense?.id,
+          totalAmount,
+          paidAmount,
+          paymentStatus,
+          notes: data.notes,
+          items: {
+            create: itemsWithTotal,
+          },
+        },
+        include: {
+          pieceWorker: true,
+          expense: true,
+          items: true,
         },
       });
-      expenseId = expense.id;
-    }
-    
-    return await prisma.dailyPieceReceipt.create({
-      data: {
-        pieceWorkerId: data.pieceWorkerId,
-        date: data.date,
-        expenseId,
-        totalAmount,
-        paidAmount,
-        paymentStatus,
-        notes: data.notes,
-        items: {
-          create: itemsWithTotal,
-        },
-      },
-      include: {
-        pieceWorker: true,
-        expense: true,
-        items: true,
-      },
     });
   },
 
@@ -159,136 +184,147 @@ export const dailyPieceReceiptService = {
     paidAmount?: number;
     notes?: string;
     createExpense?: boolean;
+    moneyBoxId?: number;
   }) {
-    const existing = await prisma.dailyPieceReceipt.findUnique({
-      where: { id },
-      include: { items: true, pieceWorker: true },
-    });
-
-    if (!existing) {
-      throw new Error('Receipt not found');
-    }
-
-    let totalAmount = existing.totalAmount;
-    let itemsData = undefined;
-
-    // If items are provided, recalculate total and update items
-    if (data.items) {
-      const itemsWithTotal = data.items.map(item => ({
-        ...item,
-        totalPrice: item.quantity * item.pricePerPiece,
-      }));
-      totalAmount = itemsWithTotal.reduce((sum, item) => sum + item.totalPrice, 0);
-      
-      // Delete existing items and create new ones
-      await prisma.receiptItem.deleteMany({
-        where: { receiptId: id },
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.dailyPieceReceipt.findUnique({
+        where: { id },
+        include: { items: true, pieceWorker: true },
       });
-      
-      itemsData = {
-        create: itemsWithTotal,
-      };
-    }
 
-    const paidAmount = data.paidAmount ?? existing.paidAmount;
-    
-    // Determine payment status
-    let paymentStatus: PaymentStatus = PaymentStatus.NOT_PAID;
-    if (paidAmount >= totalAmount) {
-      paymentStatus = PaymentStatus.PAID;
-    } else if (paidAmount > 0) {
-      paymentStatus = PaymentStatus.PART_PAID;
-    }
+      if (!existing) {
+        throw new Error('Receipt not found');
+      }
 
-    const createExpense = data.createExpense ?? !!existing.expenseId;
-    const expense = await syncPieceWorkerExpense(
-      {
-        id: existing.id,
-        date: data.date ?? existing.date,
-        paidAmount,
-        expenseId: existing.expenseId,
-        pieceWorker: existing.pieceWorker,
-      },
-      createExpense
-    );
+      let totalAmount = existing.totalAmount;
+      let itemsData = undefined;
 
-    return await prisma.dailyPieceReceipt.update({
-      where: { id },
-      data: {
-        date: data.date,
-        totalAmount,
-        paidAmount,
-        paymentStatus,
-        notes: data.notes,
-        expenseId: expense?.id,
-        ...(itemsData && { items: itemsData }),
-      },
-      include: {
-        pieceWorker: true,
-        expense: true,
-        items: true,
-      },
+      if (data.items) {
+        const itemsWithTotal = data.items.map(item => ({
+          ...item,
+          totalPrice: item.quantity * item.pricePerPiece,
+        }));
+        totalAmount = itemsWithTotal.reduce((sum, item) => sum + item.totalPrice, 0);
+
+        await tx.receiptItem.deleteMany({
+          where: { receiptId: id },
+        });
+
+        itemsData = {
+          create: itemsWithTotal,
+        };
+      }
+
+      const paidAmount = data.paidAmount ?? existing.paidAmount;
+
+      let paymentStatus: PaymentStatus = PaymentStatus.NOT_PAID;
+      if (paidAmount >= totalAmount) {
+        paymentStatus = PaymentStatus.PAID;
+      } else if (paidAmount > 0) {
+        paymentStatus = PaymentStatus.PART_PAID;
+      }
+
+      const createExpense = data.createExpense ?? !!existing.expenseId;
+      const expense = await syncPieceWorkerExpense(
+        tx,
+        {
+          id: existing.id,
+          date: data.date ?? existing.date,
+          paidAmount,
+          expenseId: existing.expenseId,
+          pieceWorker: existing.pieceWorker,
+        },
+        createExpense,
+        data.moneyBoxId
+      );
+
+      return await tx.dailyPieceReceipt.update({
+        where: { id },
+        data: {
+          date: data.date,
+          totalAmount,
+          paidAmount,
+          paymentStatus,
+          notes: data.notes,
+          expenseId: expense?.id,
+          ...(itemsData && { items: itemsData }),
+        },
+        include: {
+          pieceWorker: true,
+          expense: true,
+          items: true,
+        },
+      });
     });
   },
 
-  async addPayment(id: number, amount: number, createExpense: boolean = true) {
-    const existing = await prisma.dailyPieceReceipt.findUnique({
-      where: { id },
-      include: { pieceWorker: true },
-    });
+  async addPayment(id: number, amount: number, createExpense: boolean = true, moneyBoxId?: number) {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.dailyPieceReceipt.findUnique({
+        where: { id },
+        include: { pieceWorker: true },
+      });
 
-    if (!existing) {
-      throw new Error('Receipt not found');
-    }
+      if (!existing) {
+        throw new Error('Receipt not found');
+      }
 
-    const newPaidAmount = existing.paidAmount + amount;
-    
-    // Determine payment status
-    let paymentStatus: PaymentStatus = PaymentStatus.NOT_PAID;
-    if (newPaidAmount >= existing.totalAmount) {
-      paymentStatus = PaymentStatus.PAID;
-    } else if (newPaidAmount > 0) {
-      paymentStatus = PaymentStatus.PART_PAID;
-    }
+      const newPaidAmount = existing.paidAmount + amount;
 
-    const shouldCreateExpense = createExpense || !!existing.expenseId;
-    const expense = await syncPieceWorkerExpense(
-      {
-        id: existing.id,
-        date: existing.date,
-        paidAmount: newPaidAmount,
-        expenseId: existing.expenseId,
-        pieceWorker: existing.pieceWorker,
-      },
-      shouldCreateExpense
-    );
+      let paymentStatus: PaymentStatus = PaymentStatus.NOT_PAID;
+      if (newPaidAmount >= existing.totalAmount) {
+        paymentStatus = PaymentStatus.PAID;
+      } else if (newPaidAmount > 0) {
+        paymentStatus = PaymentStatus.PART_PAID;
+      }
 
-    return await prisma.dailyPieceReceipt.update({
-      where: { id },
-      data: {
-        paidAmount: newPaidAmount,
-        paymentStatus,
-        expenseId: expense?.id,
-      },
-      include: {
-        pieceWorker: true,
-        expense: true,
-        items: true,
-      },
+      const shouldCreateExpense = createExpense || !!existing.expenseId;
+      const expense = await syncPieceWorkerExpense(
+        tx,
+        {
+          id: existing.id,
+          date: existing.date,
+          paidAmount: newPaidAmount,
+          expenseId: existing.expenseId,
+          pieceWorker: existing.pieceWorker,
+        },
+        shouldCreateExpense,
+        moneyBoxId
+      );
+
+      return await tx.dailyPieceReceipt.update({
+        where: { id },
+        data: {
+          paidAmount: newPaidAmount,
+          paymentStatus,
+          expenseId: expense?.id,
+        },
+        include: {
+          pieceWorker: true,
+          expense: true,
+          items: true,
+        },
+      });
     });
   },
 
   async delete(id: number) {
-    const existing = await prisma.dailyPieceReceipt.findUnique({
-      where: { id },
-    });
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.dailyPieceReceipt.findUnique({
+        where: { id },
+      });
 
-    if (existing?.expenseId) {
-      await prisma.dailyExpense.delete({ where: { id: existing.expenseId } }).catch(() => {});
-    }
+      if (existing?.expenseId) {
+        const expense = await tx.dailyExpense.findUnique({ where: { id: existing.expenseId } });
+        if (expense?.moneyBoxId) {
+          await tx.moneyBox.update({ where: { id: expense.moneyBoxId }, data: { currentBalance: { increment: expense.amount } } });
+        }
+        await tx.dailyExpense.delete({ where: { id: existing.expenseId } }).catch(() => {});
+      }
 
-    return await prisma.dailyPieceReceipt.delete({
-      where: { id },
+      return await tx.dailyPieceReceipt.delete({
+        where: { id },
+      });
     });
   },
 

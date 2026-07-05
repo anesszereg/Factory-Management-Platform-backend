@@ -35,15 +35,14 @@ export const dailyPieceReceiptController = {
 
   async create(req: Request, res: Response) {
     try {
-      const { pieceWorkerId, date, items, paidAmount, notes, createExpense } = req.body;
-      
-      // Parse items
+      const { pieceWorkerId, date, items, paidAmount, notes, createExpense, moneyBoxId } = req.body;
+
       const parsedItems = items.map((item: any) => ({
         itemName: item.itemName,
         quantity: parseInt(item.quantity),
         pricePerPiece: parseFloat(item.pricePerPiece),
       }));
-      
+
       const receipt = await dailyPieceReceiptService.create({
         pieceWorkerId: parseInt(pieceWorkerId),
         date: new Date(date),
@@ -51,6 +50,7 @@ export const dailyPieceReceiptController = {
         paidAmount: paidAmount ? parseFloat(paidAmount) : 0,
         notes,
         createExpense: createExpense !== false,
+        moneyBoxId: moneyBoxId ? parseInt(moneyBoxId) : undefined,
       });
       res.status(201).json(receipt);
     } catch (error: any) {
@@ -61,21 +61,21 @@ export const dailyPieceReceiptController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { date, items, paidAmount, notes, createExpense } = req.body;
-      
-      // Parse items if provided
+      const { date, items, paidAmount, notes, createExpense, moneyBoxId } = req.body;
+
       const parsedItems = items ? items.map((item: any) => ({
         itemName: item.itemName,
         quantity: parseInt(item.quantity),
         pricePerPiece: parseFloat(item.pricePerPiece),
       })) : undefined;
-      
+
       const receipt = await dailyPieceReceiptService.update(id, {
         date: date ? new Date(date) : undefined,
         items: parsedItems,
         paidAmount: paidAmount !== undefined ? parseFloat(paidAmount) : undefined,
         notes,
         createExpense: createExpense !== undefined ? createExpense : undefined,
+        moneyBoxId: moneyBoxId !== undefined ? (moneyBoxId ? parseInt(moneyBoxId) : undefined) : undefined,
       });
       res.json(receipt);
     } catch (error: any) {
@@ -86,12 +86,13 @@ export const dailyPieceReceiptController = {
   async addPayment(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { amount, createExpense } = req.body;
-      
+      const { amount, createExpense, moneyBoxId } = req.body;
+
       const receipt = await dailyPieceReceiptService.addPayment(
         id,
         parseFloat(amount),
-        createExpense !== false
+        createExpense !== false,
+        moneyBoxId ? parseInt(moneyBoxId) : undefined
       );
       res.json(receipt);
     } catch (error: any) {
