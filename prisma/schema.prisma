@@ -48,8 +48,26 @@ model ProductionOrder {
   dailyProduction     DailyProduction[]
   materialConsumption MaterialConsumption[]
   pieceWorkerPayments PieceWorkerPayment[]
+  workers             ProductionOrderWorker[]
 
   @@map("production_orders")
+}
+
+model ProductionOrderWorker {
+  id            Int     @id @default(autoincrement())
+  orderId       Int     @map("order_id")
+  employeeId    Int?    @map("employee_id")
+  pieceWorkerId Int?    @map("piece_worker_id")
+  cost          Float   @default(0)
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  order       ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  employee    Employee?       @relation(fields: [employeeId], references: [id])
+  pieceWorker PieceWorker?    @relation(fields: [pieceWorkerId], references: [id])
+
+  @@map("production_order_workers")
 }
 
 enum ProductionStep {
@@ -248,6 +266,7 @@ model Employee {
 
   salaryAllowances    SalaryAllowance[]
   materialConsumption MaterialConsumption[]
+  productionWorkers   ProductionOrderWorker[]
 
   @@map("employees")
 }
@@ -284,6 +303,7 @@ model PieceWorker {
   dailyPieceReceipts  DailyPieceReceipt[]
   materialConsumption MaterialConsumption[]
   payments            PieceWorkerPayment[]
+  productionWorkers   ProductionOrderWorker[]
 
   @@map("piece_workers")
 }

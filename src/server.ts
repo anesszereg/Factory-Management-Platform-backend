@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import furnitureModelsRouter from './routes/furnitureModels';
 import productionOrdersRouter from './routes/productionOrders';
+import productionOrderWorkersRouter from './routes/productionOrderWorkers';
 import dailyProductionRouter from './routes/dailyProduction';
 import rawMaterialsRouter from './routes/rawMaterials';
 import materialPurchasesRouter from './routes/materialPurchases';
@@ -66,6 +67,7 @@ app.get('/', (req, res) => {
 
 app.use('/api/furniture-models', furnitureModelsRouter);
 app.use('/api/production-orders', productionOrdersRouter);
+app.use('/api/production-order-workers', productionOrderWorkersRouter);
 app.use('/api/daily-production', dailyProductionRouter);
 app.use('/api/raw-materials', rawMaterialsRouter);
 app.use('/api/material-purchases', materialPurchasesRouter);

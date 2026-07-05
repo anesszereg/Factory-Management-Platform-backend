@@ -4,31 +4,90 @@ const prisma = new PrismaClient();
 
 export const productionOrderService = {
   async getAll(filters?: { status?: ProductionStatus; modelId?: number }) {
-    return await prisma.productionOrder.findMany({
+    const orders = await prisma.productionOrder.findMany({
       where: {
         ...(filters?.status && { status: filters.status }),
         ...(filters?.modelId && { modelId: filters.modelId })
       },
       include: {
         model: true,
+        workers: {
+          include: {
+            employee: { select: { id: true, firstName: true, lastName: true } },
+            pieceWorker: { select: { id: true, firstName: true, lastName: true } }
+          }
+        },
+        materialConsumption: {
+          include: { material: true }
+        },
+        pieceWorkerPayments: true,
         _count: {
           select: { dailyProduction: true }
         }
       },
       orderBy: { createdAt: 'desc' }
     });
+
+    return orders.map(order => {
+      const materialCost = order.materialConsumption.reduce(
+        (sum, c) => sum + (c.quantity * (c.material.purchasePrice || 0)),
+        0
+      );
+      const pieceWorkerCost = order.pieceWorkerPayments.reduce(
+        (sum, p) => sum + p.totalAmount,
+        0
+      );
+      const laborCost = order.workers.reduce((sum, w) => sum + w.cost, 0);
+      return {
+        ...order,
+        materialCost,
+        pieceWorkerCost,
+        laborCost,
+        totalCost: materialCost + pieceWorkerCost + laborCost
+      };
+    });
   },
 
   async getById(id: number) {
-    return await prisma.productionOrder.findUnique({
+    const order = await prisma.productionOrder.findUnique({
       where: { id },
       include: {
         model: true,
         dailyProduction: {
           orderBy: { date: 'asc' }
-        }
+        },
+        workers: {
+          include: {
+            employee: { select: { id: true, firstName: true, lastName: true } },
+            pieceWorker: { select: { id: true, firstName: true, lastName: true } }
+          }
+        },
+        materialConsumption: {
+          include: { material: true }
+        },
+        pieceWorkerPayments: true
       }
     });
+
+    if (!order) return null;
+
+    const materialCost = order.materialConsumption.reduce(
+      (sum, c) => sum + (c.quantity * (c.material.purchasePrice || 0)),
+      0
+    );
+    const pieceWorkerCost = order.pieceWorkerPayments.reduce(
+      (sum, p) => sum + p.totalAmount,
+      0
+    );
+    const laborCost = order.workers.reduce((sum, w) => sum + w.cost, 0);
+
+    return {
+      ...order,
+      materialCost,
+      pieceWorkerCost,
+      laborCost,
+      totalCost: materialCost + pieceWorkerCost + laborCost
+    };
   },
 
   async create(data: {
