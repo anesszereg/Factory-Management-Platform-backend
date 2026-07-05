@@ -1,5 +1,6 @@
 import { PrismaClient, ProductionStep } from '@prisma/client';
 import { startOfDay, endOfDay } from 'date-fns';
+import { warehouseService } from './warehouseService';
 
 const prisma = new PrismaClient();
 
@@ -29,6 +30,7 @@ export const dailyProductionService = {
         })
       },
       include: {
+        colorSplits: true,
         order: {
           include: {
             model: true
@@ -43,6 +45,7 @@ export const dailyProductionService = {
     return await prisma.dailyProduction.findUnique({
       where: { id },
       include: {
+        colorSplits: true,
         order: {
           include: {
             model: true
@@ -60,16 +63,86 @@ export const dailyProductionService = {
     quantityCompleted: number;
     quantityLost?: number;
     notes?: string;
+    colorSplits?: { color: string; quantity: number }[];
   }) {
-    return await prisma.dailyProduction.create({
-      data,
+    const { colorSplits, ...productionData } = data;
+
+    if (productionData.step === ProductionStep.PAINT && colorSplits && colorSplits.length > 0) {
+      const splitTotal = colorSplits.reduce((sum, s) => sum + s.quantity, 0);
+      if (splitTotal !== productionData.quantityCompleted) {
+        throw new Error(`Color split total (${splitTotal}) must equal completed quantity (${productionData.quantityCompleted})`);
+      }
+    }
+
+    const production = await prisma.dailyProduction.create({
+      data: {
+        ...productionData,
+        colorSplits: colorSplits && colorSplits.length > 0
+          ? { create: colorSplits }
+          : undefined
+      },
       include: {
+        colorSplits: true,
         order: {
           include: {
             model: true
           }
         }
       }
+    });
+
+    if (production.step === ProductionStep.PACKAGING) {
+      await this.finishOrderAndStock(production.orderId);
+    }
+
+    return production;
+  },
+
+  async finishOrderAndStock(orderId: number) {
+    const order = await prisma.productionOrder.findUnique({
+      where: { id: orderId },
+      include: { model: true }
+    });
+
+    if (!order || order.status !== 'IN_PROGRESS') return;
+
+    const paintRecords = await prisma.dailyProduction.findMany({
+      where: { orderId, step: ProductionStep.PAINT },
+      include: { colorSplits: true }
+    });
+
+    const colorTotals: Record<string, number> = {};
+    paintRecords.forEach(record => {
+      record.colorSplits.forEach(split => {
+        colorTotals[split.color] = (colorTotals[split.color] || 0) + split.quantity;
+      });
+    });
+
+    const colors = Object.keys(colorTotals);
+    if (colors.length === 0) {
+      colorTotals['DEFAULT'] = order.quantity;
+    }
+
+    const warehouse = await prisma.warehouse.findFirst({ orderBy: { id: 'asc' } });
+    if (!warehouse) {
+      console.warn('No warehouse found; cannot auto-insert finished products');
+      return;
+    }
+
+    for (const [color, quantity] of Object.entries(colorTotals)) {
+      const sku = `${order.model.name}-${order.model.size}-${color}`.toUpperCase();
+      await warehouseService.addInventory({
+        modelId: order.modelId,
+        warehouseId: warehouse.id,
+        sku,
+        quantity,
+        productionDate: new Date().toISOString().split('T')[0],
+      });
+    }
+
+    await prisma.productionOrder.update({
+      where: { id: orderId },
+      data: { status: 'FINISHED' }
     });
   },
 
@@ -83,6 +156,7 @@ export const dailyProductionService = {
       where: { id },
       data,
       include: {
+        colorSplits: true,
         order: {
           include: {
             model: true
@@ -109,6 +183,7 @@ export const dailyProductionService = {
         }
       },
       include: {
+        colorSplits: true,
         order: {
           include: {
             model: true
@@ -146,6 +221,7 @@ export const dailyProductionService = {
         }
       },
       include: {
+        colorSplits: true,
         order: {
           include: {
             model: true

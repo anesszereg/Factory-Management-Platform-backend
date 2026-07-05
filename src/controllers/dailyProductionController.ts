@@ -36,7 +36,7 @@ export const dailyProductionController = {
 
   async create(req: Request, res: Response) {
     try {
-      const { orderId, step, date, quantityEntered, quantityCompleted, quantityLost, notes } = req.body;
+      const { orderId, step, date, quantityEntered, quantityCompleted, quantityLost, notes, colorSplits } = req.body;
       const production = await dailyProductionService.create({
         orderId: parseInt(orderId),
         step: step as ProductionStep,
@@ -44,7 +44,10 @@ export const dailyProductionController = {
         quantityEntered: parseInt(quantityEntered),
         quantityCompleted: parseInt(quantityCompleted),
         quantityLost: quantityLost ? parseInt(quantityLost) : undefined,
-        notes
+        notes,
+        colorSplits: Array.isArray(colorSplits)
+          ? colorSplits.map((split: any) => ({ color: String(split.color), quantity: parseInt(split.quantity) || 0 }))
+          : undefined
       });
       res.status(201).json(production);
     } catch (error: any) {

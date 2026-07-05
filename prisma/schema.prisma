@@ -61,21 +61,35 @@ enum ProductionStep {
 }
 
 model DailyProduction {
-  id                 Int            @id @default(autoincrement())
-  orderId            Int            @map("order_id")
+  id                 Int                  @id @default(autoincrement())
+  orderId            Int                  @map("order_id")
   step               ProductionStep
-  date               DateTime       @db.Date
-  quantityEntered    Int            @map("quantity_entered")
-  quantityCompleted  Int            @map("quantity_completed")
-  quantityLost       Int            @default(0) @map("quantity_lost")
+  date               DateTime             @db.Date
+  quantityEntered    Int                  @map("quantity_entered")
+  quantityCompleted  Int                  @map("quantity_completed")
+  quantityLost       Int                  @default(0) @map("quantity_lost")
   notes              String?
-  createdAt          DateTime       @default(now()) @map("created_at")
-  updatedAt          DateTime       @updatedAt @map("updated_at")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
 
-  order ProductionOrder @relation(fields: [orderId], references: [id])
+  order       ProductionOrder        @relation(fields: [orderId], references: [id])
+  colorSplits ProductionColorSplit[]
 
   @@unique([orderId, step, date])
   @@map("daily_production")
+}
+
+model ProductionColorSplit {
+  id                Int             @id @default(autoincrement())
+  dailyProductionId Int             @map("daily_production_id")
+  color             String
+  quantity          Int
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  dailyProduction DailyProduction @relation(fields: [dailyProductionId], references: [id], onDelete: Cascade)
+
+  @@map("production_color_splits")
 }
 
 enum MaterialUnit {
