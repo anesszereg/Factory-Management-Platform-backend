@@ -55,6 +55,7 @@ export const salaryAllowanceService = {
     date: Date;
     amount: number;
     description?: string;
+    moneyBoxId?: number;
   }) {
     const employee = await prisma.employee.findUnique({
       where: { id: data.employeeId }
@@ -62,6 +63,14 @@ export const salaryAllowanceService = {
 
     if (!employee) {
       throw new Error('Employee not found');
+    }
+
+    if (data.moneyBoxId) {
+      const moneyBox = await prisma.moneyBox.findUnique({ where: { id: data.moneyBoxId } });
+      if (!moneyBox) throw new Error('Money box not found');
+      if (moneyBox.currentBalance < data.amount) {
+        throw new Error(`Insufficient balance in money box (available: ${moneyBox.currentBalance})`);
+      }
     }
 
     const salaryCycle = getEmployeeSalaryCycle(employee.hireDate, data.date);
@@ -89,9 +98,11 @@ export const salaryAllowanceService = {
       );
     }
 
+    const { moneyBoxId, ...allowanceData } = data;
+
     const result = await prisma.$transaction(async (tx) => {
       const allowance = await tx.salaryAllowance.create({
-        data,
+        data: allowanceData,
         include: {
           employee: {
             select: {
@@ -109,11 +120,19 @@ export const salaryAllowanceService = {
           date: data.date,
           category: 'SALARIES',
           amount: data.amount,
-          description: data.description 
+          moneyBoxId: moneyBoxId || null,
+          description: data.description
             ? `Salary allowance for ${employee.firstName} ${employee.lastName}: ${data.description}`
             : `Salary allowance for ${employee.firstName} ${employee.lastName}`,
         }
       });
+
+      if (moneyBoxId) {
+        await tx.moneyBox.update({
+          where: { id: moneyBoxId },
+          data: { currentBalance: { decrement: data.amount } }
+        });
+      }
 
       return allowance;
     });

@@ -33,12 +33,13 @@ export const salaryAllowanceController = {
 
   async create(req: Request, res: Response) {
     try {
-      const { employeeId, date, amount, description } = req.body;
+      const { employeeId, date, amount, description, moneyBoxId } = req.body;
       const allowance = await salaryAllowanceService.create({
         employeeId: parseInt(employeeId),
         date: date ? new Date(date) : new Date(),
         amount: parseFloat(amount),
-        description
+        description,
+        moneyBoxId: moneyBoxId ? parseInt(moneyBoxId) : undefined,
       });
       res.status(201).json(allowance);
     } catch (error: any) {
