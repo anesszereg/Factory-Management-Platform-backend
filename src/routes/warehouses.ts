@@ -51,6 +51,16 @@ router.post('/inventory', async (req, res) => {
   catch (e: any) { res.status(400).json({ error: e.message }); }
 });
 
+router.put('/inventory/:id', async (req, res) => {
+  try { res.json(await warehouseService.updateInventory(Number(req.params.id), req.body)); }
+  catch (e: any) { res.status(400).json({ error: e.message }); }
+});
+
+router.post('/inventory/recalculate-costs', async (req, res) => {
+  try { res.json(await warehouseService.recalculateCostsFromProduction()); }
+  catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 router.patch('/inventory/:id/adjust', async (req, res) => {
   try {
     const { quantity, notes } = req.body;

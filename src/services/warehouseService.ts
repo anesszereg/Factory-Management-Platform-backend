@@ -135,6 +135,58 @@ export const warehouseService = {
     });
   },
 
+  async updateInventory(id: number, data: { productionCost?: number; color?: string; sku?: string }) {
+    const existing = await prisma.finishedProductInventory.findUnique({ where: { id } });
+    if (!existing) throw new Error('Product not found');
+    return prisma.finishedProductInventory.update({
+      where: { id },
+      data: {
+        ...(data.productionCost !== undefined ? { productionCost: data.productionCost } : {}),
+        ...(data.color !== undefined ? { color: data.color } : {}),
+        ...(data.sku ? { sku: data.sku } : {}),
+      },
+      include: { model: true, warehouse: true }
+    });
+  },
+
+  async recalculateCostsFromProduction() {
+    const orders = await prisma.productionOrder.findMany({
+      include: {
+        model: true,
+        materialConsumption: { include: { material: true } },
+        workers: true,
+        pieceWorkerPayments: true,
+      }
+    });
+
+    let updated = 0;
+    for (const order of orders) {
+      const materialCost = order.materialConsumption.reduce(
+        (sum: number, c: any) => sum + (c.quantity * (c.material.purchasePrice || 0)), 0
+      );
+      const laborCost = order.workers.reduce((sum: number, w: any) => sum + w.cost, 0);
+      const pieceWorkerCost = order.pieceWorkerPayments.reduce((sum: number, p: any) => sum + p.totalAmount, 0);
+      const totalCost = materialCost + laborCost + pieceWorkerCost;
+      const costPerUnit = order.quantity > 0 ? totalCost / order.quantity : 0;
+
+      if (costPerUnit > 0) {
+        const items = await prisma.finishedProductInventory.findMany({
+          where: { modelId: order.modelId }
+        });
+        for (const item of items) {
+          if (item.productionCost === 0) {
+            await prisma.finishedProductInventory.update({
+              where: { id: item.id },
+              data: { productionCost: costPerUnit }
+            });
+            updated++;
+          }
+        }
+      }
+    }
+    return { updated, message: `${updated} inventory items updated with production costs` };
+  },
+
   async transfer(productId: number, fromWarehouseId: number, toWarehouseId: number, quantity: number, notes?: string) {
     return prisma.$transaction(async (tx) => {
       const product = await tx.finishedProductInventory.findUnique({ where: { id: productId } });
