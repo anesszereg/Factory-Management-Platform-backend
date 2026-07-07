@@ -184,5 +184,108 @@ export const clientService = {
       }
       return txRecord;
     });
+  },
+
+  async deletePayment(clientId: number, paymentId: number) {
+    return prisma.$transaction(async (tx) => {
+      const payment = await tx.salePayment.findUnique({ where: { id: paymentId } });
+      if (!payment) throw new Error('Payment not found');
+      if (payment.clientId !== clientId) throw new Error('Payment does not belong to this client');
+
+      // Reverse money box balance
+      await tx.moneyBox.update({
+        where: { id: payment.moneyBoxId },
+        data: { currentBalance: { decrement: payment.amount } }
+      });
+
+      // Reverse client outstanding balance
+      await tx.client.update({
+        where: { id: clientId },
+        data: { outstandingBalance: { increment: payment.amount } }
+      });
+
+      // Reverse order paid amount if linked to an order
+      if (payment.orderId) {
+        const order = await tx.salesOrder.findUnique({ where: { id: payment.orderId } });
+        if (order) {
+          const newPaid = Math.max(0, order.paidAmount - payment.amount);
+          const status = newPaid <= 0 ? 'NOT_PAID' : newPaid >= order.total ? 'PAID' : 'PART_PAID';
+          await tx.salesOrder.update({
+            where: { id: payment.orderId },
+            data: { paidAmount: newPaid, paymentStatus: status as any }
+          });
+        }
+      }
+
+      // Delete associated financial transaction
+      if (payment.transactionId) {
+        await tx.financialTransaction.delete({ where: { id: payment.transactionId } }).catch(() => {});
+      }
+
+      // Delete related client transaction
+      await tx.clientTransaction.deleteMany({
+        where: { clientId, referenceId: payment.transactionId, referenceType: 'FinancialTransaction' }
+      });
+
+      // Delete the payment
+      return tx.salePayment.delete({ where: { id: paymentId } });
+    });
+  },
+
+  async updatePayment(clientId: number, paymentId: number, data: { amount?: number; date?: string; paymentMethod?: string; reference?: string; notes?: string }) {
+    return prisma.$transaction(async (tx) => {
+      const payment = await tx.salePayment.findUnique({ where: { id: paymentId } });
+      if (!payment) throw new Error('Payment not found');
+      if (payment.clientId !== clientId) throw new Error('Payment does not belong to this client');
+
+      const amountDiff = (data.amount ?? payment.amount) - payment.amount;
+
+      if (amountDiff !== 0) {
+        // Adjust money box
+        await tx.moneyBox.update({
+          where: { id: payment.moneyBoxId },
+          data: { currentBalance: { increment: amountDiff } }
+        });
+
+        // Adjust client outstanding balance
+        await tx.client.update({
+          where: { id: clientId },
+          data: { outstandingBalance: { decrement: amountDiff } }
+        });
+
+        // Adjust order paid amount
+        if (payment.orderId) {
+          const order = await tx.salesOrder.findUnique({ where: { id: payment.orderId } });
+          if (order) {
+            const newPaid = order.paidAmount + amountDiff;
+            const status = newPaid <= 0 ? 'NOT_PAID' : newPaid >= order.total ? 'PAID' : 'PART_PAID';
+            await tx.salesOrder.update({
+              where: { id: payment.orderId },
+              data: { paidAmount: newPaid, paymentStatus: status as any }
+            });
+          }
+        }
+
+        // Adjust financial transaction
+        if (payment.transactionId) {
+          await tx.financialTransaction.update({
+            where: { id: payment.transactionId },
+            data: { amount: data.amount ?? payment.amount }
+          });
+        }
+      }
+
+      return tx.salePayment.update({
+        where: { id: paymentId },
+        data: {
+          ...(data.amount !== undefined ? { amount: data.amount } : {}),
+          ...(data.date ? { date: new Date(data.date) } : {}),
+          ...(data.paymentMethod ? { paymentMethod: data.paymentMethod as any } : {}),
+          ...(data.reference !== undefined ? { reference: data.reference } : {}),
+          ...(data.notes !== undefined ? { notes: data.notes } : {}),
+        },
+        include: { moneyBox: { select: { id: true, name: true } } }
+      });
+    });
   }
 };

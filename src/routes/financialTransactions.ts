@@ -44,4 +44,14 @@ router.post('/', async (req, res) => {
   catch (e: any) { res.status(400).json({ error: e.message }); }
 });
 
+router.put('/:id', async (req, res) => {
+  try { res.json(await financialTransactionService.update(Number(req.params.id), req.body)); }
+  catch (e: any) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete('/:id', async (req, res) => {
+  try { await financialTransactionService.delete(Number(req.params.id)); res.status(204).send(); }
+  catch (e: any) { res.status(400).json({ error: e.message }); }
+});
+
 export default router;

@@ -59,6 +59,121 @@ export const financialTransactionService = {
     });
   },
 
+  async update(id: number, data: {
+    date?: string;
+    amount?: number;
+    type?: TransactionType;
+    category?: TransactionCategory;
+    description?: string;
+    reference?: string;
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.financialTransaction.findUnique({ where: { id } });
+      if (!existing) throw new Error('Transaction not found');
+
+      // Reverse old balance effect
+      const oldBalanceChange = existing.type === TransactionType.INCOME ? existing.amount : -existing.amount;
+      await tx.moneyBox.update({
+        where: { id: existing.moneyBoxId },
+        data: { currentBalance: { decrement: oldBalanceChange } }
+      });
+
+      const newType = data.type ?? existing.type;
+      const newAmount = data.amount ?? existing.amount;
+      const newBalanceChange = newType === TransactionType.INCOME ? newAmount : -newAmount;
+
+      await tx.moneyBox.update({
+        where: { id: existing.moneyBoxId },
+        data: { currentBalance: { increment: newBalanceChange } }
+      });
+
+      // If amount changed and this is a client payment, adjust client balance and sale payment
+      const amountDiff = newAmount - existing.amount;
+      if (amountDiff !== 0 && existing.category === TransactionCategory.CLIENT_PAYMENT) {
+        const salePayments = await tx.salePayment.findMany({ where: { transactionId: id } });
+        for (const sp of salePayments) {
+          await tx.client.update({
+            where: { id: sp.clientId },
+            data: { outstandingBalance: { decrement: amountDiff } }
+          });
+          await tx.salePayment.update({
+            where: { id: sp.id },
+            data: { amount: newAmount }
+          });
+          if (sp.orderId) {
+            const order = await tx.salesOrder.findUnique({ where: { id: sp.orderId } });
+            if (order) {
+              const newPaid = order.paidAmount + amountDiff;
+              const status = newPaid <= 0 ? 'NOT_PAID' : newPaid >= order.total ? 'PAID' : 'PART_PAID';
+              await tx.salesOrder.update({
+                where: { id: sp.orderId },
+                data: { paidAmount: newPaid, paymentStatus: status as any }
+              });
+            }
+          }
+        }
+      }
+
+      return tx.financialTransaction.update({
+        where: { id },
+        data: {
+          ...(data.date ? { date: new Date(data.date) } : {}),
+          ...(data.amount !== undefined ? { amount: data.amount } : {}),
+          ...(data.type ? { type: data.type } : {}),
+          ...(data.category ? { category: data.category } : {}),
+          ...(data.description !== undefined ? { description: data.description } : {}),
+          ...(data.reference !== undefined ? { reference: data.reference } : {}),
+        },
+        include: { moneyBox: { select: { id: true, name: true } } }
+      });
+    });
+  },
+
+  async delete(id: number) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.financialTransaction.findUnique({ where: { id } });
+      if (!existing) throw new Error('Transaction not found');
+
+      // Reverse balance effect on money box
+      const balanceChange = existing.type === TransactionType.INCOME ? existing.amount : -existing.amount;
+      await tx.moneyBox.update({
+        where: { id: existing.moneyBoxId },
+        data: { currentBalance: { decrement: balanceChange } }
+      });
+
+      // Reverse sale payment effects if any
+      const salePayments = await tx.salePayment.findMany({ where: { transactionId: id } });
+      for (const sp of salePayments) {
+        // Reverse client outstanding balance
+        await tx.client.update({
+          where: { id: sp.clientId },
+          data: { outstandingBalance: { increment: sp.amount } }
+        });
+        // Reverse order paid amount
+        if (sp.orderId) {
+          const order = await tx.salesOrder.findUnique({ where: { id: sp.orderId } });
+          if (order) {
+            const newPaid = Math.max(0, order.paidAmount - sp.amount);
+            const status = newPaid <= 0 ? 'NOT_PAID' : newPaid >= order.total ? 'PAID' : 'PART_PAID';
+            await tx.salesOrder.update({
+              where: { id: sp.orderId },
+              data: { paidAmount: newPaid, paymentStatus: status as any }
+            });
+          }
+        }
+      }
+
+      // Delete related client transaction entries
+      await tx.clientTransaction.deleteMany({ where: { referenceId: id, referenceType: 'FinancialTransaction' } });
+
+      // Delete related records
+      await tx.moneyBoxTransfer.deleteMany({ where: { transactionId: id } });
+      await tx.salePayment.deleteMany({ where: { transactionId: id } });
+
+      return tx.financialTransaction.delete({ where: { id } });
+    });
+  },
+
   async getDailySummary(date: string) {
     const d = new Date(date);
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());

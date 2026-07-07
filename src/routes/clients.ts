@@ -47,4 +47,17 @@ router.post('/:id/payments', async (req, res) => {
   } catch (e: any) { res.status(400).json({ error: e.message }); }
 });
 
+router.put('/:id/payments/:paymentId', async (req, res) => {
+  try {
+    res.json(await clientService.updatePayment(Number(req.params.id), Number(req.params.paymentId), req.body));
+  } catch (e: any) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete('/:id/payments/:paymentId', async (req, res) => {
+  try {
+    await clientService.deletePayment(Number(req.params.id), Number(req.params.paymentId));
+    res.status(204).send();
+  } catch (e: any) { res.status(400).json({ error: e.message }); }
+});
+
 export default router;
