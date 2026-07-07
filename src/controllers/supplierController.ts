@@ -161,7 +161,7 @@ export const supplierController = {
   async addPayment(req: Request, res: Response) {
     try {
       const orderId = parseInt(req.params.orderId);
-      const { date, amount, paymentMethod, notes, createExpense } = req.body;
+      const { date, amount, paymentMethod, notes, createExpense, moneyBoxId } = req.body;
       const payment = await supplierService.addPayment({
         orderId,
         date: new Date(date),
@@ -169,6 +169,7 @@ export const supplierController = {
         paymentMethod,
         notes,
         createExpense,
+        moneyBoxId: moneyBoxId ? parseInt(moneyBoxId) : undefined,
       });
       res.status(201).json(payment);
     } catch (error: any) {

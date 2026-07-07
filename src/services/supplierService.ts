@@ -217,73 +217,86 @@ export const supplierService = {
     paymentMethod?: string;
     notes?: string;
     createExpense?: boolean;
+    moneyBoxId?: number;
   }) {
-    const order = await prisma.supplierOrder.findUnique({
-      where: { id: data.orderId },
-      include: { supplier: true },
-    });
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.supplierOrder.findUnique({
+        where: { id: data.orderId },
+        include: { supplier: true },
+      });
 
-    if (!order) {
-      throw new Error('Order not found');
-    }
+      if (!order) {
+        throw new Error('Order not found');
+      }
 
-    let expenseId: number | undefined;
+      let expenseId: number | undefined;
 
-    // Create expense record if requested
-    if (data.createExpense) {
-      const expense = await prisma.dailyExpense.create({
+      // Create expense record if requested
+      if (data.createExpense) {
+        const expense = await tx.dailyExpense.create({
+          data: {
+            date: data.date,
+            category: 'OTHER',
+            amount: data.amount,
+            paymentMethod: data.paymentMethod,
+            description: `Payment to supplier: ${order.supplier.name}`,
+            ...(data.moneyBoxId ? { moneyBox: { connect: { id: data.moneyBoxId } } } : {}),
+          },
+        });
+        expenseId = expense.id;
+
+        // Deduct from money box
+        if (data.moneyBoxId) {
+          await tx.moneyBox.update({
+            where: { id: data.moneyBoxId },
+            data: { currentBalance: { decrement: data.amount } },
+          });
+        }
+      }
+
+      // Create payment
+      const payment = await tx.supplierPayment.create({
         data: {
+          supplierId: order.supplierId,
+          orderId: data.orderId,
           date: data.date,
-          category: 'OTHER',
           amount: data.amount,
           paymentMethod: data.paymentMethod,
-          description: `Payment to supplier: ${order.supplier.name}`,
+          notes: data.notes,
+          expenseId,
+          ...(data.moneyBoxId ? { moneyBoxId: data.moneyBoxId } : {}),
+        },
+        include: {
+          expense: true,
         },
       });
-      expenseId = expense.id;
-    }
 
-    // Create payment
-    const payment = await prisma.supplierPayment.create({
-      data: {
-        supplierId: order.supplierId,
-        orderId: data.orderId,
-        date: data.date,
-        amount: data.amount,
-        paymentMethod: data.paymentMethod,
-        notes: data.notes,
-        expenseId,
-      },
-      include: {
-        expense: true,
-      },
+      // Update order paid amount and status
+      const newPaidAmount = order.paidAmount + data.amount;
+      let newStatus: SupplierOrderStatus = order.status;
+
+      if (newPaidAmount >= order.totalAmount) {
+        newStatus = 'COMPLETED';
+      } else if (newPaidAmount > 0) {
+        newStatus = 'PARTIAL';
+      }
+
+      await tx.supplierOrder.update({
+        where: { id: data.orderId },
+        data: {
+          paidAmount: newPaidAmount,
+          status: newStatus,
+        },
+      });
+
+      return payment;
     });
-
-    // Update order paid amount and status
-    const newPaidAmount = order.paidAmount + data.amount;
-    let newStatus: SupplierOrderStatus = order.status;
-
-    if (newPaidAmount >= order.totalAmount) {
-      newStatus = 'COMPLETED';
-    } else if (newPaidAmount > 0) {
-      newStatus = 'PARTIAL';
-    }
-
-    await prisma.supplierOrder.update({
-      where: { id: data.orderId },
-      data: {
-        paidAmount: newPaidAmount,
-        status: newStatus,
-      },
-    });
-
-    return payment;
   },
 
   async deletePayment(id: number) {
     const payment = await prisma.supplierPayment.findUnique({
       where: { id },
-      include: { order: true },
+      include: { order: true, expense: true },
     });
 
     if (!payment) {
@@ -307,6 +320,14 @@ export const supplierService = {
         status: newStatus,
       },
     });
+
+    // Restore money box balance if expense was linked to one
+    if (payment.expense?.moneyBoxId) {
+      await prisma.moneyBox.update({
+        where: { id: payment.expense.moneyBoxId },
+        data: { currentBalance: { increment: payment.amount } },
+      });
+    }
 
     // Delete associated expense if exists
     if (payment.expenseId) {
