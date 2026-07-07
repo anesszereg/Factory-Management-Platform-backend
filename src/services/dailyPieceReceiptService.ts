@@ -35,25 +35,32 @@ async function syncPieceWorkerExpense(
   if (receipt.expenseId) {
     const existing = await tx.dailyExpense.findUnique({ where: { id: receipt.expenseId } });
     if (existing) {
-      // Restore old money box if changed
-      if (existing.moneyBoxId && existing.moneyBoxId !== moneyBoxId) {
-        await tx.moneyBox.update({ where: { id: existing.moneyBoxId }, data: { currentBalance: { increment: existing.amount } } });
-      }
-      // Adjust balance on same money box if amount changed
+      const amountDelta = receipt.paidAmount - existing.amount;
+
       if (existing.moneyBoxId && existing.moneyBoxId === moneyBoxId) {
-        await tx.moneyBox.update({ where: { id: existing.moneyBoxId }, data: { currentBalance: { increment: existing.amount - receipt.paidAmount } } });
-      }
-      // Decrement new money box if changed
-      if (moneyBoxId && existing.moneyBoxId !== moneyBoxId) {
+        // Same money box: only adjust by the delta
+        if (amountDelta !== 0) {
+          await tx.moneyBox.update({ where: { id: existing.moneyBoxId }, data: { currentBalance: { decrement: amountDelta } } });
+        }
+      } else if (existing.moneyBoxId && moneyBoxId && existing.moneyBoxId !== moneyBoxId) {
+        // Switching money boxes: restore old, deduct full new amount from new box
+        await tx.moneyBox.update({ where: { id: existing.moneyBoxId }, data: { currentBalance: { increment: existing.amount } } });
         await tx.moneyBox.update({ where: { id: moneyBoxId }, data: { currentBalance: { decrement: receipt.paidAmount } } });
+      } else if (existing.moneyBoxId && !moneyBoxId) {
+        // Removing money box: restore old box
+        await tx.moneyBox.update({ where: { id: existing.moneyBoxId }, data: { currentBalance: { increment: existing.amount } } });
+      } else if (!existing.moneyBoxId && moneyBoxId) {
+        // Assigning money box where none existed: only deduct the delta (new payment portion)
+        await tx.moneyBox.update({ where: { id: moneyBoxId }, data: { currentBalance: { decrement: amountDelta } } });
       }
+
       return await tx.dailyExpense.update({
         where: { id: receipt.expenseId },
         data: {
           date: receipt.date,
           amount: receipt.paidAmount,
           description,
-          ...(moneyBoxId ? { moneyBox: { connect: { id: moneyBoxId } } } : { moneyBox: { disconnect: true } }),
+          ...(moneyBoxId ? { moneyBox: { connect: { id: moneyBoxId } } } : existing.moneyBoxId ? { moneyBox: { disconnect: true } } : {}),
         },
       });
     }
@@ -62,7 +69,7 @@ async function syncPieceWorkerExpense(
   const expense = await tx.dailyExpense.create({
     data: {
       date: receipt.date,
-      category: 'OTHER',
+      category: 'SALARIES',
       amount: receipt.paidAmount,
       description,
       ...(moneyBoxId ? { moneyBox: { connect: { id: moneyBoxId } } } : {}),
@@ -279,11 +286,12 @@ export const dailyPieceReceiptService = {
       }
 
       const shouldCreateExpense = createExpense || !!existing.expenseId;
+      const paymentDate = new Date();
       const expense = await syncPieceWorkerExpense(
         tx,
         {
           id: existing.id,
-          date: existing.date,
+          date: paymentDate,
           paidAmount: newPaidAmount,
           expenseId: existing.expenseId,
           pieceWorker: existing.pieceWorker,
