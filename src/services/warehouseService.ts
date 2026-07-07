@@ -71,9 +71,19 @@ export const warehouseService = {
       });
       let product;
       if (existing) {
+        // Weighted average cost
+        const newCost = data.productionCost ?? 0;
+        const totalQty = existing.quantity + data.quantity;
+        const avgCost = totalQty > 0
+          ? (existing.quantity * existing.productionCost + data.quantity * newCost) / totalQty
+          : newCost;
         product = await tx.finishedProductInventory.update({
           where: { id: existing.id },
-          data: { quantity: { increment: data.quantity }, ...(data.color ? { color: data.color } : {}) }
+          data: {
+            quantity: { increment: data.quantity },
+            productionCost: avgCost,
+            ...(data.color ? { color: data.color } : {}),
+          }
         });
       } else {
         product = await tx.finishedProductInventory.create({

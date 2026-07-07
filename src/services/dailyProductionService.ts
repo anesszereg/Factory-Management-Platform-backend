@@ -101,7 +101,12 @@ export const dailyProductionService = {
   async finishOrderAndStock(orderId: number) {
     const order = await prisma.productionOrder.findUnique({
       where: { id: orderId },
-      include: { model: true }
+      include: {
+        model: true,
+        materialConsumption: { include: { material: true } },
+        workers: true,
+        pieceWorkerPayments: true,
+      }
     });
 
     if (!order || order.status !== 'IN_PROGRESS') return;
@@ -119,6 +124,15 @@ export const dailyProductionService = {
       console.warn(`Order ${orderId} has not completed all production steps; skipping auto-stock insertion`);
       return;
     }
+
+    // Calculate total production cost
+    const materialCost = order.materialConsumption.reduce(
+      (sum, c) => sum + (c.quantity * (c.material.purchasePrice || 0)), 0
+    );
+    const laborCost = order.workers.reduce((sum, w) => sum + w.cost, 0);
+    const pieceWorkerCost = order.pieceWorkerPayments.reduce((sum, p) => sum + p.totalAmount, 0);
+    const totalCost = materialCost + laborCost + pieceWorkerCost;
+    const costPerUnit = order.quantity > 0 ? totalCost / order.quantity : 0;
 
     const paintRecords = await prisma.dailyProduction.findMany({
       where: { orderId, step: ProductionStep.PAINT },
@@ -149,7 +163,9 @@ export const dailyProductionService = {
         modelId: order.modelId,
         warehouseId: warehouse.id,
         sku,
+        color: color !== 'DEFAULT' ? color : undefined,
         quantity,
+        productionCost: costPerUnit,
         productionDate: new Date().toISOString().split('T')[0],
       });
     }
