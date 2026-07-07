@@ -123,4 +123,14 @@ export const dailyPieceReceiptController = {
       res.status(500).json({ error: error.message });
     }
   },
+
+  async getWorkerPayments(req: Request, res: Response) {
+    try {
+      const pieceWorkerId = parseInt(req.params.workerId);
+      const payments = await dailyPieceReceiptService.getWorkerPayments(pieceWorkerId);
+      res.json(payments);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  },
 };

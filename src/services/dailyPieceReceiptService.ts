@@ -336,6 +336,35 @@ export const dailyPieceReceiptService = {
     });
   },
 
+  async getWorkerPayments(pieceWorkerId: number) {
+    // Get all receipts for this worker that have an expense (payment)
+    const receipts = await prisma.dailyPieceReceipt.findMany({
+      where: { pieceWorkerId, expenseId: { not: null } },
+      include: {
+        expense: { include: { moneyBox: { select: { id: true, name: true } } } },
+        items: true,
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    return receipts
+      .filter(r => r.expense)
+      .map(r => ({
+        id: r.expense!.id,
+        receiptId: r.id,
+        date: r.expense!.date,
+        amount: r.expense!.amount,
+        category: r.expense!.category,
+        description: r.expense!.description,
+        moneyBox: (r.expense as any).moneyBox ?? null,
+        receiptTotal: r.totalAmount,
+        receiptPaid: r.paidAmount,
+        receiptItems: r.items,
+        paymentStatus: r.paymentStatus,
+        createdAt: r.expense!.createdAt,
+      }));
+  },
+
   async getSummary(pieceWorkerId?: number, startDate?: Date, endDate?: Date) {
     const where: any = {};
     

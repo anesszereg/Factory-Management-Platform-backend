@@ -5,6 +5,7 @@ const router = Router();
 
 router.get('/', dailyPieceReceiptController.getAll);
 router.get('/summary', dailyPieceReceiptController.getSummary);
+router.get('/worker/:workerId/payments', dailyPieceReceiptController.getWorkerPayments);
 router.get('/:id', dailyPieceReceiptController.getById);
 router.post('/', dailyPieceReceiptController.create);
 router.put('/:id', dailyPieceReceiptController.update);
