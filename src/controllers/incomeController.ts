@@ -43,7 +43,11 @@ export const incomeController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const income = await incomeService.update(id, req.body);
+      const { moneyBoxId, ...rest } = req.body;
+      const income = await incomeService.update(id, {
+        ...rest,
+        moneyBoxId: moneyBoxId !== undefined ? (moneyBoxId ? parseInt(moneyBoxId) : null) : undefined,
+      });
       res.json(income);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

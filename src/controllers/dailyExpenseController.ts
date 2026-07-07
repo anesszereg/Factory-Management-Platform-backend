@@ -58,7 +58,7 @@ export const dailyExpenseController = {
         date: date ? new Date(date) : undefined,
         category: category as ExpenseCategory,
         amount: amount ? parseFloat(amount) : undefined,
-        moneyBoxId: moneyBoxId ? parseInt(moneyBoxId) : undefined,
+        moneyBoxId: moneyBoxId !== undefined ? (moneyBoxId ? parseInt(moneyBoxId) : null) : undefined,
         paymentMethod,
         description
       });

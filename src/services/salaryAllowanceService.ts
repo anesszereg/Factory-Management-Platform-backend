@@ -202,8 +202,34 @@ export const salaryAllowanceService = {
   },
 
   async delete(id: number) {
-    return await prisma.salaryAllowance.delete({
-      where: { id }
+    return await prisma.$transaction(async (tx) => {
+      const allowance = await tx.salaryAllowance.findUnique({
+        where: { id },
+        include: { employee: true }
+      });
+      if (!allowance) throw new Error('Allowance not found');
+
+      // Find and delete associated expense, restore money box balance
+      const expense = await tx.dailyExpense.findFirst({
+        where: {
+          category: 'SALARIES',
+          amount: allowance.amount,
+          date: allowance.date,
+          description: { contains: `${allowance.employee.firstName} ${allowance.employee.lastName}` }
+        }
+      });
+
+      if (expense) {
+        if (expense.moneyBoxId) {
+          await tx.moneyBox.update({
+            where: { id: expense.moneyBoxId },
+            data: { currentBalance: { increment: expense.amount } }
+          });
+        }
+        await tx.dailyExpense.delete({ where: { id: expense.id } });
+      }
+
+      return tx.salaryAllowance.delete({ where: { id } });
     });
   },
 

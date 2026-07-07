@@ -67,19 +67,62 @@ export const dailyExpenseService = {
     date?: Date;
     category?: ExpenseCategory;
     amount?: number;
-    moneyBoxId?: number;
+    moneyBoxId?: number | null;
     paymentMethod?: string;
     description?: string;
   }) {
     return await prisma.$transaction(async (tx) => {
       const old = await tx.dailyExpense.findUnique({ where: { id } });
-      if (old?.moneyBoxId && data.amount !== undefined) {
+      if (!old) throw new Error('Expense not found');
+
+      const newAmount = data.amount ?? old.amount;
+      const newMoneyBoxId = data.moneyBoxId === null ? null : (data.moneyBoxId ?? old.moneyBoxId);
+
+      if (old.moneyBoxId && old.moneyBoxId === newMoneyBoxId) {
+        // Same money box: adjust by amount difference
+        const diff = newAmount - old.amount;
+        if (diff !== 0) {
+          await tx.moneyBox.update({
+            where: { id: old.moneyBoxId },
+            data: { currentBalance: { decrement: diff } }
+          });
+        }
+      } else if (old.moneyBoxId && newMoneyBoxId && old.moneyBoxId !== newMoneyBoxId) {
+        // Switching money boxes: restore old, deduct from new
         await tx.moneyBox.update({
           where: { id: old.moneyBoxId },
-          data: { currentBalance: { increment: old.amount - (data.amount ?? old.amount) } }
+          data: { currentBalance: { increment: old.amount } }
+        });
+        await tx.moneyBox.update({
+          where: { id: newMoneyBoxId },
+          data: { currentBalance: { decrement: newAmount } }
+        });
+      } else if (old.moneyBoxId && !newMoneyBoxId) {
+        // Removing money box: restore old
+        await tx.moneyBox.update({
+          where: { id: old.moneyBoxId },
+          data: { currentBalance: { increment: old.amount } }
+        });
+      } else if (!old.moneyBoxId && newMoneyBoxId) {
+        // Adding money box: deduct full amount from new
+        await tx.moneyBox.update({
+          where: { id: newMoneyBoxId },
+          data: { currentBalance: { decrement: newAmount } }
         });
       }
-      return tx.dailyExpense.update({ where: { id }, data });
+
+      const updateData: any = { ...data };
+      if (data.moneyBoxId === null) {
+        updateData.moneyBox = { disconnect: true };
+        delete updateData.moneyBoxId;
+      } else if (data.moneyBoxId) {
+        updateData.moneyBox = { connect: { id: data.moneyBoxId } };
+        delete updateData.moneyBoxId;
+      } else {
+        delete updateData.moneyBoxId;
+      }
+
+      return tx.dailyExpense.update({ where: { id }, data: updateData });
     });
   },
 

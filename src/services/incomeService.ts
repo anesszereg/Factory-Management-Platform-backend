@@ -67,21 +67,63 @@ export const incomeService = {
       date?: string;
       source?: IncomeSource;
       amount?: number;
-      moneyBoxId?: number;
+      moneyBoxId?: number | null;
       paymentMethod?: string;
       description?: string;
     }
   ) {
     return await prisma.$transaction(async (tx) => {
       const old = await tx.income.findUnique({ where: { id } });
-      if (old?.moneyBoxId && data.amount !== undefined) {
+      if (!old) throw new Error('Income not found');
+
+      const newAmount = data.amount ?? old.amount;
+      const newMoneyBoxId = data.moneyBoxId === null ? null : (data.moneyBoxId ?? old.moneyBoxId);
+
+      if (old.moneyBoxId && old.moneyBoxId === newMoneyBoxId) {
+        // Same money box: adjust by amount difference
+        const diff = newAmount - old.amount;
+        if (diff !== 0) {
+          await tx.moneyBox.update({
+            where: { id: old.moneyBoxId },
+            data: { currentBalance: { increment: diff } }
+          });
+        }
+      } else if (old.moneyBoxId && newMoneyBoxId && old.moneyBoxId !== newMoneyBoxId) {
+        // Switching money boxes: reverse old, apply new
         await tx.moneyBox.update({
           where: { id: old.moneyBoxId },
-          data: { currentBalance: { increment: data.amount - old.amount } }
+          data: { currentBalance: { decrement: old.amount } }
+        });
+        await tx.moneyBox.update({
+          where: { id: newMoneyBoxId },
+          data: { currentBalance: { increment: newAmount } }
+        });
+      } else if (old.moneyBoxId && !newMoneyBoxId) {
+        // Removing money box: reverse old
+        await tx.moneyBox.update({
+          where: { id: old.moneyBoxId },
+          data: { currentBalance: { decrement: old.amount } }
+        });
+      } else if (!old.moneyBoxId && newMoneyBoxId) {
+        // Adding money box: apply full amount
+        await tx.moneyBox.update({
+          where: { id: newMoneyBoxId },
+          data: { currentBalance: { increment: newAmount } }
         });
       }
+
       const updateData: any = { ...data };
       if (data.date) updateData.date = new Date(data.date);
+      if (data.moneyBoxId === null) {
+        updateData.moneyBox = { disconnect: true };
+        delete updateData.moneyBoxId;
+      } else if (data.moneyBoxId) {
+        updateData.moneyBox = { connect: { id: data.moneyBoxId } };
+        delete updateData.moneyBoxId;
+      } else {
+        delete updateData.moneyBoxId;
+      }
+
       return tx.income.update({ where: { id }, data: updateData });
     });
   },
