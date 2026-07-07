@@ -59,6 +59,7 @@ export const warehouseService = {
     modelId: number;
     warehouseId: number;
     sku: string;
+    color?: string;
     quantity: number;
     productionCost?: number;
     batchNumber?: string;
@@ -72,7 +73,7 @@ export const warehouseService = {
       if (existing) {
         product = await tx.finishedProductInventory.update({
           where: { id: existing.id },
-          data: { quantity: { increment: data.quantity } }
+          data: { quantity: { increment: data.quantity }, ...(data.color ? { color: data.color } : {}) }
         });
       } else {
         product = await tx.finishedProductInventory.create({
@@ -80,6 +81,7 @@ export const warehouseService = {
             modelId: data.modelId,
             warehouseId: data.warehouseId,
             sku: data.sku,
+            color: data.color,
             quantity: data.quantity,
             productionCost: data.productionCost ?? 0,
             batchNumber: data.batchNumber,

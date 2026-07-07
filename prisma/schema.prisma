@@ -728,6 +728,7 @@ model FinishedProductInventory {
   modelId         Int                  @map("model_id")
   warehouseId     Int                  @map("warehouse_id")
   sku             String               @unique
+  color           String?
   quantity        Int                  @default(0)
   productionCost  Float                @default(0) @map("production_cost")
   batchNumber     String?              @map("batch_number")
