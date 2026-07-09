@@ -50,11 +50,12 @@ export const salaryAllowanceController = {
   async update(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { date, amount, description } = req.body;
+      const { date, amount, description, moneyBoxId } = req.body;
       const allowance = await salaryAllowanceService.update(id, {
         date: date ? new Date(date) : undefined,
-        amount: amount ? parseFloat(amount) : undefined,
-        description
+        amount: amount !== undefined ? parseFloat(amount) : undefined,
+        description,
+        moneyBoxId: moneyBoxId !== undefined ? (moneyBoxId ? parseInt(moneyBoxId) : null) : undefined,
       });
       res.json(allowance);
     } catch (error: any) {

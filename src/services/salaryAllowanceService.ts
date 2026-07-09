@@ -10,7 +10,7 @@ export const salaryAllowanceService = {
     startDate?: Date;
     endDate?: Date;
   }) {
-    return await prisma.salaryAllowance.findMany({
+    const allowances = await prisma.salaryAllowance.findMany({
       where: {
         ...(filters?.employeeId && { employeeId: filters.employeeId }),
         ...(filters?.startDate && filters?.endDate && {
@@ -32,10 +32,37 @@ export const salaryAllowanceService = {
       },
       orderBy: { date: 'desc' }
     });
+
+    // Attach moneyBoxId from the linked expense (if any)
+    const expenses = await prisma.dailyExpense.findMany({
+      where: {
+        category: 'SALARIES',
+        ...(allowances.length > 0 && {
+          OR: allowances.map(a => {
+            const employeeName = `${a.employee.firstName} ${a.employee.lastName}`;
+            return {
+              amount: a.amount,
+              date: a.date,
+              description: { contains: employeeName }
+            };
+          })
+        })
+      }
+    });
+
+    return allowances.map(a => {
+      const employeeName = `${a.employee.firstName} ${a.employee.lastName}`;
+      const expense = expenses.find(e =>
+        e.amount === a.amount &&
+        e.date.getTime() === new Date(a.date).getTime() &&
+        e.description?.includes(employeeName)
+      );
+      return { ...a, moneyBoxId: expense?.moneyBoxId ?? null };
+    });
   },
 
   async getById(id: number) {
-    return await prisma.salaryAllowance.findUnique({
+    const allowance = await prisma.salaryAllowance.findUnique({
       where: { id },
       include: {
         employee: {
@@ -48,6 +75,20 @@ export const salaryAllowanceService = {
         }
       }
     });
+
+    if (!allowance) return null;
+
+    const employeeName = `${allowance.employee.firstName} ${allowance.employee.lastName}`;
+    const expense = await prisma.dailyExpense.findFirst({
+      where: {
+        category: 'SALARIES',
+        amount: allowance.amount,
+        date: allowance.date,
+        description: { contains: employeeName }
+      }
+    });
+
+    return { ...allowance, moneyBoxId: expense?.moneyBoxId ?? null };
   },
 
   async create(data: {
@@ -144,60 +185,152 @@ export const salaryAllowanceService = {
     date?: Date;
     amount?: number;
     description?: string;
+    moneyBoxId?: number | null;
   }) {
-    const existingAllowance = await prisma.salaryAllowance.findUnique({
-      where: { id },
-      include: {
-        employee: true
+    return await prisma.$transaction(async (tx) => {
+      const existingAllowance = await tx.salaryAllowance.findUnique({
+        where: { id },
+        include: { employee: true }
+      });
+
+      if (!existingAllowance) {
+        throw new Error('Allowance not found');
       }
-    });
 
-    if (!existingAllowance) {
-      throw new Error('Allowance not found');
-    }
+      const newAmount = data.amount ?? existingAllowance.amount;
+      const newDate = data.date ?? existingAllowance.date;
+      const newDescription = data.description !== undefined ? data.description : existingAllowance.description;
 
-    if (data.amount) {
-      const targetDate = data.date || existingAllowance.date;
-      const salaryCycle = getEmployeeSalaryCycle(existingAllowance.employee.hireDate, targetDate);
-      
-      const monthAllowances = await prisma.salaryAllowance.findMany({
-        where: {
-          employeeId: existingAllowance.employeeId,
-          id: { not: id },
-          date: {
-            gte: salaryCycle.start,
-            lte: salaryCycle.end
+      if (data.amount !== undefined) {
+        const salaryCycle = getEmployeeSalaryCycle(existingAllowance.employee.hireDate, newDate);
+
+        const monthAllowances = await tx.salaryAllowance.findMany({
+          where: {
+            employeeId: existingAllowance.employeeId,
+            id: { not: id },
+            date: {
+              gte: salaryCycle.start,
+              lte: salaryCycle.end
+            }
           }
+        });
+
+        const totalOtherAllowances = monthAllowances.reduce(
+          (sum, allowance) => sum + allowance.amount,
+          0
+        );
+
+        const remainingSalary = existingAllowance.employee.monthlySalary - totalOtherAllowances;
+
+        if (newAmount > remainingSalary) {
+          throw new Error(
+            `Updated allowance amount (${newAmount}) exceeds remaining salary (${remainingSalary})`
+          );
+        }
+      }
+
+      // Find associated expense record
+      const employeeName = `${existingAllowance.employee.firstName} ${existingAllowance.employee.lastName}`;
+      const expense = await tx.dailyExpense.findFirst({
+        where: {
+          category: 'SALARIES',
+          amount: existingAllowance.amount,
+          date: existingAllowance.date,
+          description: { contains: employeeName }
         }
       });
 
-      const totalOtherAllowances = monthAllowances.reduce(
-        (sum, allowance) => sum + allowance.amount,
-        0
-      );
+      const newMoneyBoxId = data.moneyBoxId === null ? null : (data.moneyBoxId ?? expense?.moneyBoxId ?? null);
+      const expenseDescription = newDescription
+        ? `Salary allowance for ${employeeName}: ${newDescription}`
+        : `Salary allowance for ${employeeName}`;
 
-      const remainingSalary = existingAllowance.employee.monthlySalary - totalOtherAllowances;
+      if (expense) {
+        const oldMoneyBoxId = expense.moneyBoxId;
 
-      if (data.amount > remainingSalary) {
-        throw new Error(
-          `Updated allowance amount (${data.amount}) exceeds remaining salary (${remainingSalary})`
-        );
+        if (oldMoneyBoxId && oldMoneyBoxId === newMoneyBoxId) {
+          // Same money box: adjust by amount difference
+          const diff = newAmount - existingAllowance.amount;
+          if (diff !== 0) {
+            await tx.moneyBox.update({
+              where: { id: oldMoneyBoxId },
+              data: { currentBalance: { decrement: diff } }
+            });
+          }
+        } else if (oldMoneyBoxId && newMoneyBoxId && oldMoneyBoxId !== newMoneyBoxId) {
+          // Switching money boxes: restore old, deduct from new
+          await tx.moneyBox.update({
+            where: { id: oldMoneyBoxId },
+            data: { currentBalance: { increment: existingAllowance.amount } }
+          });
+          await tx.moneyBox.update({
+            where: { id: newMoneyBoxId },
+            data: { currentBalance: { decrement: newAmount } }
+          });
+        } else if (oldMoneyBoxId && !newMoneyBoxId) {
+          // Removing money box: restore old
+          await tx.moneyBox.update({
+            where: { id: oldMoneyBoxId },
+            data: { currentBalance: { increment: existingAllowance.amount } }
+          });
+        } else if (!oldMoneyBoxId && newMoneyBoxId) {
+          // Adding money box: deduct full amount from new
+          await tx.moneyBox.update({
+            where: { id: newMoneyBoxId },
+            data: { currentBalance: { decrement: newAmount } }
+          });
+        }
+
+        const updateData: any = {
+          amount: newAmount,
+          date: newDate,
+          description: expenseDescription
+        };
+        if (data.moneyBoxId === null) {
+          updateData.moneyBox = { disconnect: true };
+        } else if (data.moneyBoxId) {
+          updateData.moneyBox = { connect: { id: data.moneyBoxId } };
+        }
+
+        await tx.dailyExpense.update({
+          where: { id: expense.id },
+          data: updateData
+        });
+      } else if (newMoneyBoxId) {
+        // No existing expense but a money box was selected: create expense and deduct
+        await tx.dailyExpense.create({
+          data: {
+            date: newDate,
+            category: 'SALARIES',
+            amount: newAmount,
+            description: expenseDescription,
+            moneyBox: { connect: { id: newMoneyBoxId } }
+          }
+        });
+        await tx.moneyBox.update({
+          where: { id: newMoneyBoxId },
+          data: { currentBalance: { decrement: newAmount } }
+        });
       }
-    }
 
-    return await prisma.salaryAllowance.update({
-      where: { id },
-      data,
-      include: {
-        employee: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            monthlySalary: true
+      return await tx.salaryAllowance.update({
+        where: { id },
+        data: {
+          ...(data.date && { date: data.date }),
+          ...(data.amount !== undefined && { amount: data.amount }),
+          ...(data.description !== undefined && { description: data.description })
+        },
+        include: {
+          employee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              monthlySalary: true
+            }
           }
         }
-      }
+      });
     });
   },
 

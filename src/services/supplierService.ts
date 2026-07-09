@@ -244,14 +244,14 @@ export const supplierService = {
           },
         });
         expenseId = expense.id;
+      }
 
-        // Deduct from money box
-        if (data.moneyBoxId) {
-          await tx.moneyBox.update({
-            where: { id: data.moneyBoxId },
-            data: { currentBalance: { decrement: data.amount } },
-          });
-        }
+      // Deduct from money box if one was selected (payment always reduces cash)
+      if (data.moneyBoxId) {
+        await tx.moneyBox.update({
+          where: { id: data.moneyBoxId },
+          data: { currentBalance: { decrement: data.amount } },
+        });
       }
 
       // Create payment
@@ -321,10 +321,11 @@ export const supplierService = {
       },
     });
 
-    // Restore money box balance if expense was linked to one
-    if (payment.expense?.moneyBoxId) {
+    // Restore money box balance if payment was linked to one
+    const moneyBoxId = payment.expense?.moneyBoxId ?? payment.moneyBoxId;
+    if (moneyBoxId) {
       await prisma.moneyBox.update({
-        where: { id: payment.expense.moneyBoxId },
+        where: { id: moneyBoxId },
         data: { currentBalance: { increment: payment.amount } },
       });
     }
