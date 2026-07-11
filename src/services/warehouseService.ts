@@ -149,6 +149,17 @@ export const warehouseService = {
     });
   },
 
+  async deleteInventory(id: number) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.finishedProductInventory.findUnique({ where: { id } });
+      if (!existing) throw new Error('Product not found');
+      // Clean up movements first because of the relation's onDelete: Cascade
+      await tx.inventoryMovement.deleteMany({ where: { productId: id } });
+      await tx.finishedProductInventory.delete({ where: { id } });
+      return existing;
+    });
+  },
+
   async recalculateCostsFromProduction() {
     const orders = await prisma.productionOrder.findMany({
       include: {

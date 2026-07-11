@@ -56,6 +56,11 @@ router.put('/inventory/:id', async (req, res) => {
   catch (e: any) { res.status(400).json({ error: e.message }); }
 });
 
+router.delete('/inventory/:id', async (req, res) => {
+  try { await warehouseService.deleteInventory(Number(req.params.id)); res.status(204).send(); }
+  catch (e: any) { res.status(400).json({ error: e.message }); }
+});
+
 router.post('/inventory/recalculate-costs', async (req, res) => {
   try { res.json(await warehouseService.recalculateCostsFromProduction()); }
   catch (e: any) { res.status(500).json({ error: e.message }); }
